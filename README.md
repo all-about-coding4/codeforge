@@ -1,120 +1,483 @@
-# CodeForge Pro is a multi-user, browser-based coding environment with a real terminal, file explorer, Monaco editor, and live collaboration.
+⚡ CodeForge Pro
 
-## CodeForge Pro
 Multi-User Terminal + Files IDE
-A self-contained web IDE that runs in the browser. It provides:
-	•	A real interactive terminal (with proper controlling TTY so Ctrl+C actually stops jobs)
-	•	Multiple terminal tabs
-	•	Monaco code editor
-	•	File explorer with create / rename / delete / upload / download
-	•	Real-time multi-user collaboration (see who is editing a file and receive live updates)
-	•	Mobile-friendly UI with an on-screen keyboard bar
 
-## Features
-Feature
-Description
-Proper PTY
-Uses pty.fork() so the shell has a real controlling terminal. Ctrl+C, Ctrl+Z, job control, etc. work correctly.
-Multi-terminal
-Open several independent terminals and switch between them with tabs (Ctrl+T or the + button).
-Robust restart
-Restart walks /proc (Linux) or ps and kills the entire session, not just the shell.
-Multi-user
-Users get a persistent ID + username. Username appears in the shell prompt.
-Live collaboration
-When multiple people open the same file you see their avatars and receive real-time content updates.
-Workspace isolation
-All file operations are confined to the workspace/ directory.
-Mobile support
-Responsive layout + large on-screen key bar for common control keys.
+CodeForge Pro is a self-hosted, browser-based development environment that brings a real terminal, file manager, Monaco editor, and real-time collaboration together in one workspace.
 
-## Requirements
-	•	Python 3.8+
-	•	The lynkio package (the framework this app is built on)
-	•	Linux or macOS recommended for full terminal features (Windows has a simplified subprocess-based terminal)
+Built with Python + Lynkio, CodeForge Pro is designed to feel like a lightweight desktop IDE while remaining accessible from any modern browser — including mobile devices.
 
-# Installation
-# Clone or copy the script
-# Install the framework
+⸻
+
+✨ Features
+
+Feature	Description
+🖥️ Real Terminal	Interactive shell with proper controlling TTY support on Unix systems. Ctrl+C, Ctrl+Z, job control, and other terminal signals work as expected.
+🧩 Multiple Terminals	Open multiple independent terminal sessions and switch between them using tabs.
+📝 Monaco Editor	Full-featured code editor with syntax highlighting and familiar keyboard shortcuts.
+📁 File Explorer	Create, rename, delete, upload, download, and navigate files and folders directly from the browser.
+👥 Multi-User Collaboration	Multiple users can work in the same workspace and see live editing activity.
+🔄 Live File Updates	Changes made by another user can be synchronized in real time.
+🔐 Workspace Isolation	File operations are restricted to the configured workspace/ directory.
+📱 Mobile Friendly	Responsive interface with an on-screen terminal keyboard for touch devices.
+🔁 Session Restart	Restarting a terminal session cleans up the existing process tree before starting a new shell.
+🆔 User Identity	Each user can configure a username that appears in the terminal and collaboration UI.
+
+⸻
+
+🖼️ What You Get
+
+CodeForge Pro combines the essential parts of a development environment into a single browser interface:
+
+┌─────────────────────────────────────────────────────────────┐
+│  CodeForge Pro                              👤 alex         │
+├───────────────┬─────────────────────────────────────────────┤
+│               │                                             │
+│ 📁 workspace  │              Monaco Editor                  │
+│               │                                             │
+│  📄 main.py   │   def hello():                             │
+│  📄 server.py │       print("Hello, CodeForge!")           │
+│  📁 src/      │                                             │
+│               │                                             │
+├───────────────┴─────────────────────────────────────────────┤
+│ Terminal 1 │ Terminal 2 │ +                                │
+├─────────────────────────────────────────────────────────────┤
+│ $ python main.py                                            │
+│ Hello, CodeForge!                                           │
+│ $                                                          │
+└─────────────────────────────────────────────────────────────┘
+
+The exact interface may vary depending on the version and configuration.
+
+⸻
+
+🚀 Quick Start
+
+Requirements
+
+* Python 3.8+
+* Lynkio
+* Linux or macOS recommended for full terminal functionality
+* A modern web browser
+
+Windows: CodeForge Pro can run using a subprocess-based terminal, but Unix systems provide more complete PTY and job-control behavior.
+
+⸻
+
+📦 Installation
+
+Clone the project or copy codeforge.py into a new directory.
+
+Install the framework:
+
 pip install lynkio
 
-# (Optional) Create a virtual environment – the app will also try to create one automatically
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-# .venv\Scripts\activate    # Windows
+Optional: Create a virtual environment
 
-# Running
+python -m venv .venv
+
+Linux/macOS:
+
+source .venv/bin/activate
+
+Windows:
+
+.venv\Scripts\activate
+
+Then install Lynkio inside the environment:
+
+pip install lynkio
+
+⸻
+
+▶️ Running CodeForge Pro
+
+Start the server:
+
 python codeforge.py
-You should see something like:
+
+You should see output similar to:
+
 ============================================================
-  CodeForge Pro — Multi-Terminal (Controlling-TTY Edition)
+  CodeForge Pro — Multi-Terminal
 ============================================================
   🌐  http://localhost:5000
   📂  Workspace: /path/to/workspace
   🐍  Python: ...
   📦  Venv: ...
   🐚  Shell: /bin/bash
-  ...
 ============================================================
-Open http://localhost:5000 in your browser.
-The server listens on 0.0.0.0:5000, so it is reachable from other machines on the network (useful for multi-user sessions).
 
-## How to Use
-File Explorer (left sidebar)
-	•	Click folders to navigate (breadcrumb updates).
-	•	Click a file to open it in the editor.
-	•	Right-click (or long-press on mobile) for context menu:
-	◦	Open / New File / New Folder
-	◦	Run in Terminal (runs python )
-	◦	Download / Rename / Delete
-	•	Toolbar buttons: New file, Upload, Download current folder/file.
-# Editor
-	•	Monaco editor with syntax highlighting for common languages.
-	•	Auto-saves ~900 ms after you stop typing.
-	•	Live collaboration: other users’ avatars appear on the tab and in the status bar.
-	•	Ctrl/Cmd + S forces a save.
-# Terminal
-	•	Click the Term button (or `Ctrl + ``) to open/close the terminal pane.
-	•	+ or Ctrl + T → new terminal tab.
-	•	Restart button cleanly kills the whole session and starts a fresh shell.
-	•	The prompt shows your username and the current folder (synced with the explorer).
-	•	On mobile/touch devices a large key bar appears with arrows, Tab, Esc, Enter, ^C, ^D, ^L, etc.
-# User identity
-	•	Click the user icon (or the terminal title) to set a username.
-	•	Username is stored and appears in the shell prompt and in collaboration indicators.
-# Download
-	•	Download button or the breadcrumb “Download …” link downloads the current file or the whole workspace as a zip.
+Open:
 
-# Workspace
-All files live under a workspace/ directory next to the script. Hidden files (names starting with .) are ignored by the tree. A .users.json file inside the workspace stores user names.
+http://localhost:5000
 
-# Keyboard Shortcuts
-Shortcut
-Action
-`Ctrl/Cmd + ``
-Toggle terminal
+The server binds to:
+
+0.0.0.0:5000
+
+This means the application can also be accessed by other devices on the same network, which is useful for collaborative development and testing.
+
+For example:
+
+http://192.168.1.100:5000
+
+⸻
+
+📁 File Explorer
+
+The file explorer provides a browser-based interface for managing the workspace.
+
+Navigation
+
+* Click a folder to enter it.
+* Use the breadcrumb navigation to move back through directories.
+* Click a file to open it in the editor.
+* Right-click on desktop or long-press on supported touch devices to open the context menu.
+
+File Operations
+
+The explorer supports:
+
+* Create file
+* Create folder
+* Open file
+* Rename
+* Delete
+* Upload
+* Download
+* Run files in the terminal
+
+Example:
+
+workspace/
+├── main.py
+├── README.md
+├── requirements.txt
+└── src/
+    ├── app.py
+    └── utils.py
+
+⸻
+
+📝 Monaco Editor
+
+CodeForge Pro uses Monaco Editor, the same editor technology that powers VS Code.
+
+Features include:
+
+* Syntax highlighting
+* Multiple programming languages
+* Automatic saving
+* Familiar editor shortcuts
+* Current-file collaboration indicators
+* Live updates from other users
+
+Automatic Saving
+
+Files are automatically saved approximately 900 ms after you stop typing.
+
+You can also force a save with:
+
+Ctrl + S
+
+or on macOS:
+
+Cmd + S
+
+⸻
+
+🖥️ Terminal
+
+CodeForge Pro provides interactive terminal sessions directly inside the browser.
+
+Opening the Terminal
+
+Click the Terminal button or use:
+
+Ctrl/Cmd + `
+
+Creating a Terminal
+
+Click:
+
++
+
+or press:
+
 Ctrl/Cmd + T
-New terminal
-Ctrl/Cmd + S
-Save current file
-Ctrl/Cmd + D
-Download current item
 
-# Technical Notes
-	•	Unix: real PTY via pty.fork() → proper signal delivery.
-	•	Windows: uses asyncio.create_subprocess_shell (no full PTY semantics).
-	•	Max upload size: 500 MB.
-	•	The embedded frontend uses:
-	◦	xterm.js + fit addon
-	◦	Monaco Editor
-	◦	Font Awesome
-	◦	LynkIO client (/lynkio/client.js)
+Each terminal tab represents an independent session.
 
-# Stopping the Server
-Press Ctrl+C in the terminal where the server is running.
+Terminal Restart
 
-Enjoy coding with CodeForge Pro!
+The Restart button terminates the existing terminal session and starts a fresh shell.
 
-and please give us a star if you find it helpful
+On Unix systems, CodeForge Pro attempts to clean up the entire process tree rather than terminating only the shell process.
 
-# BY ALEX AUSTIN
+This helps prevent child processes from remaining behind after a restart.
+
+⸻
+
+📱 Mobile Support
+
+CodeForge Pro is designed to work on smaller screens and touch devices.
+
+The terminal includes an on-screen control bar containing commonly required keys such as:
+
+Esc   Tab   ↑   ↓   ←   →   Enter   ^C   ^D   ^L
+
+This makes it possible to interact with command-line applications even when the mobile keyboard does not provide convenient access to terminal control keys.
+
+⸻
+
+👥 Multi-User Collaboration
+
+CodeForge Pro supports multiple users working in the same environment.
+
+Users can configure their own username, which is used throughout the interface.
+
+Collaboration features include:
+
+* Persistent user identity
+* Usernames in the terminal prompt
+* Active-user indicators
+* File editing indicators
+* Real-time file updates
+* Shared workspace sessions
+
+For example, when several users are editing the same file, the interface can indicate that other users are currently working on it.
+
+⸻
+
+🆔 User Identity
+
+Click the user icon or terminal title to configure your username.
+
+The username is used for:
+
+Terminal prompt
+     ↓
+alex@codeforge:~/workspace$
+
+and for collaboration indicators inside the editor.
+
+User information is stored inside the workspace configuration.
+
+⸻
+
+⬇️ Downloads
+
+Files and directories can be downloaded directly from the browser.
+
+Download a file
+
+Select the file and use the Download action.
+
+Download a directory
+
+Use the download option from the current directory or breadcrumb.
+
+Directories can be packaged as a ZIP archive before being downloaded.
+
+⸻
+
+📂 Workspace
+
+CodeForge Pro keeps project files inside:
+
+workspace/
+
+The directory is located next to the application script.
+
+Example:
+
+codeforge/
+├── codeforge.py
+├── workspace/
+│   ├── main.py
+│   ├── README.md
+│   └── src/
+└── ...
+
+Workspace Isolation
+
+File operations are intended to remain within the configured workspace directory.
+
+This prevents normal explorer operations from navigating outside the project workspace.
+
+Hidden Files
+
+Files beginning with . are hidden from the file tree.
+
+For example:
+
+.git/
+.env
+.config
+
+are not displayed in the normal explorer tree.
+
+User information is stored in:
+
+workspace/.users.json
+
+⸻
+
+⌨️ Keyboard Shortcuts
+
+Shortcut	Action
+`Ctrl/Cmd + ``	Toggle terminal
+Ctrl/Cmd + T	Open a new terminal
+Ctrl/Cmd + S	Save current file
+Ctrl/Cmd + D	Download current item
+
+Browser and operating-system shortcuts can take precedence over application shortcuts in some environments.
+
+⸻
+
+🔧 Technical Overview
+
+CodeForge Pro is built around a Python backend with Lynkio providing the application/runtime communication layer.
+
+Unix Terminal
+
+On Unix-like systems, the terminal uses a real PTY:
+
+pty.fork()
+
+This provides proper terminal semantics and allows signals such as:
+
+Ctrl+C
+Ctrl+Z
+Ctrl+D
+
+to behave much more like a native terminal.
+
+Windows
+
+Windows uses a subprocess-based terminal implementation.
+
+Because Windows does not provide the same Unix PTY model, some terminal features and job-control behavior may differ.
+
+⸻
+
+🧱 Frontend Components
+
+The embedded frontend uses:
+
+* Monaco Editor — code editing
+* xterm.js — terminal rendering
+* xterm.js Fit Addon — terminal sizing
+* Font Awesome — interface icons
+* Lynkio Client — browser/server communication
+
+The Lynkio client is served by the application at:
+
+/lynkio/client.js
+
+⸻
+
+⚙️ Configuration
+
+The default server address is:
+
+http://localhost:5000
+
+and the server listens on:
+
+0.0.0.0:5000
+
+The workspace is created relative to the application directory:
+
+./workspace/
+
+The application may also create or use a Python virtual environment for project execution depending on the configuration.
+
+⸻
+
+📊 Current Limits
+
+Resource	Default
+Server port	5000
+Bind address	0.0.0.0
+Maximum upload size	500 MB
+Workspace	./workspace/
+Editor	Monaco
+Terminal	xterm.js
+Backend	Python + Lynkio
+
+These values may change as CodeForge Pro evolves.
+
+⸻
+
+🛡️ Security Considerations
+
+CodeForge Pro provides a powerful browser-accessible terminal, so it should not be exposed directly to the public Internet without appropriate authentication and network security controls.
+
+In particular, anyone who can access an unrestricted terminal session may potentially execute commands with the permissions of the server process.
+
+For development or trusted local networks, running it on:
+
+localhost
+
+or behind a properly configured private network is recommended.
+
+# 🛑 Stopping the Server
+
+```text
+To stop CodeForge Pro, return to the terminal where it is running and press:
+
+Ctrl+C
+
+## 🗺️ Project Structure
+
+A typical installation can look like:
+
+codeforge/
+│
+├── codeforge.py
+│
+├── workspace/
+│   ├── .users.json
+│   ├── main.py
+│   └── ...
+│
+└── ...
+
+Your workspace contents remain separate from the application itself, making it easy to back up or move projects.
+```
+
+# 🤝 Contributing
+
+```text
+Contributions, bug reports, ideas, and improvements are welcome.
+
+If you find an issue:
+
+1. Reproduce the problem.
+2. Include your Python version and operating system.
+3. Include relevant terminal/browser output.
+4. Describe the expected and actual behavior.
+
+Pull requests are welcome for improvements that keep CodeForge Pro lightweight, reliable, and easy to self-host.
+
+⭐ Support the Project
+
+If CodeForge Pro is useful to you, consider giving the project a ⭐ Star on GitHub.
+
+It helps the project gain visibility and lets others discover it.
+```
+
+# 📜 License
+
+```text
+MIT License
+```
+
+# 🚀 CodeForge Pro
+
+```text
+A lightweight browser IDE with a real terminal, files, editing, and collaboration — all in one workspace.
+
+Built with Python + Lynkio.
+```
