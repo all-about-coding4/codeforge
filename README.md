@@ -9,7 +9,7 @@ Built with Python + Lynkio, CodeForge is designed to feel like a lightweight des
 
 # ✨ Features
 ```text
-## Feature	Description
+## Feature	## Description
 
 🖥️ Real Terminal	Interactive shell with proper controlling TTY support on Unix systems. Ctrl+C, Ctrl+Z, job control, and other terminal signals work as expected.
 🧩 Multiple Terminals	Open multiple independent terminal sessions and switch between them using tabs.
