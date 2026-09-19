@@ -60,6 +60,12 @@ Requirements
 Windows: CodeForge Pro can run using a subprocess-based terminal, but Unix systems provide more complete PTY and job-control behavior.
 ```
 
+## 🎥 CodeForge Pro Demo
+
+<video src="./assets/codeforge-demo.mp4" controls width="100%">
+  Your browser does not support the video tag.
+</video>
+
 # 📦 Installation
 ```text
 Clone the project or copy codeforge.py into a new directory.
