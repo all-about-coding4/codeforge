@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 CodeForge Pro — Multi-User Terminal + Files
-• Proper controlling-terminal pty (Ctrl+C actually stops foreground jobs)
-• Multiple terminals with tab switching
-• Robust restart (walks /proc to kill session members only)
-• Multi-user, prompt shows current folder, real-time file collaboration
+Professional terminal UI, full keyboard shortcuts, paste/copy support.
 """
 
 import os
@@ -61,8 +58,7 @@ def setup_environment():
         return sys.executable, os.path.dirname(sys.executable), sys.prefix, True
     home = os.environ.get("HOME") or os.path.expanduser("~")
     for venv_root in [os.path.join(home, ".codeforge-venv"), os.path.join(WORKSPACE, ".venv")]:
-        if not can_symlink(os.path.dirname(venv_root)):
-            continue
+        if not can_symlink(os.path.dirname(venv_root)): continue
         if os.path.exists(venv_root):
             py = os.path.join(venv_root, "Scripts" if IS_WINDOWS else "bin", "python")
             if os.path.exists(py):
@@ -127,8 +123,7 @@ def safe_join(rel_path):
         abort(403, "Path outside workspace")
     return full
 
-def safe_rel(rel_path):
-    return normalize_path(rel_path)
+def safe_rel(rel_path): return normalize_path(rel_path)
 
 def shell_quote(s):
     if s is None: return "''"
@@ -185,7 +180,7 @@ def touch_user(user_id):
     USERS[user_id]["last_seen"] = time.time()
 
 # ============================================================
-# LYNkIO APP
+# LYNKIO APP
 # ============================================================
 app = Lynk(
     host="0.0.0.0",
@@ -200,44 +195,36 @@ app = Lynk(
 # UTIL
 # ============================================================
 def get_unique_path(base_path):
-    if not os.path.exists(base_path):
-        return base_path
+    if not os.path.exists(base_path): return base_path
     dirname = os.path.dirname(base_path)
     basename = os.path.basename(base_path)
     name, ext = os.path.splitext(basename)
     counter = 1
     while True:
         new_path = os.path.join(dirname, f"{name}({counter}){ext}")
-        if not os.path.exists(new_path):
-            return new_path
+        if not os.path.exists(new_path): return new_path
         counter += 1
 
 def atomic_write_text(path, content):
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+    try: os.makedirs(os.path.dirname(path), exist_ok=True)
     except Exception: pass
     tmp = path + ".tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, path)
-        return True
+        with open(tmp, "w", encoding="utf-8") as f: f.write(content)
+        os.replace(tmp, path); return True
     except Exception:
         try:
             if os.path.exists(tmp): os.unlink(tmp)
         except Exception: pass
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
+            with open(path, "w", encoding="utf-8") as f: f.write(content)
             return True
-        except Exception:
-            return False
+        except Exception: return False
 
 # ============================================================
 # SESSION / PROCESS-GROUP KILLING
 # ============================================================
 def _find_session_pids(sid):
-    """Find all pids in a POSIX session (best-effort, Linux via /proc)."""
     pids = []
     if sid is None or sid <= 0: return pids
     if IS_LINUX:
@@ -250,16 +237,12 @@ def _find_session_pids(sid):
                     rparen = data.rfind(')')
                     if rparen == -1: continue
                     fields = data[rparen+2:].split()
-                    # fields: state ppid pgrp session tty_nr ...
                     if len(fields) < 4: continue
                     if int(fields[3]) == sid:
                         pids.append(int(entry))
-                except Exception:
-                    continue
-        except Exception:
-            pass
+                except Exception: continue
+        except Exception: pass
         return pids
-    # Fallback (macOS): use ps
     try:
         out = subprocess.check_output(['ps', '-o', 'pid=,sess='], timeout=3).decode()
         for line in out.strip().splitlines():
@@ -267,33 +250,23 @@ def _find_session_pids(sid):
             if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) == sid:
                 try: pids.append(int(parts[0]))
                 except Exception: pass
-    except Exception:
-        pass
+    except Exception: pass
     return pids
 
 def _kill_session(sid, hard=False, exclude_pids=None):
-    """Kill every process in the given session.
-    Never touches the current server process or its ancestors.
-    """
-    exclude = set(exclude_pids or [])
-    exclude.add(os.getpid())
-    # Also exclude our parent chain
+    exclude = set(exclude_pids or []); exclude.add(os.getpid())
     try:
         ppid = os.getppid()
         while ppid and ppid > 1:
             exclude.add(ppid)
             try:
-                with open(f'/proc/{ppid}/stat') as f:
-                    data = f.read()
+                with open(f'/proc/{ppid}/stat') as f: data = f.read()
                 rp = data.rfind(')')
                 if rp == -1: break
                 f2 = data[rp+2:].split()
                 ppid = int(f2[1]) if len(f2) > 1 else 0
-            except Exception:
-                break
-    except Exception:
-        pass
-
+            except Exception: break
+    except Exception: pass
     sig = signal.SIGKILL if hard else signal.SIGTERM
     pids = _find_session_pids(sid)
     for pid in pids:
@@ -301,8 +274,6 @@ def _kill_session(sid, hard=False, exclude_pids=None):
         try: os.kill(pid, sig)
         except ProcessLookupError: pass
         except Exception: pass
-
-    # If /proc walk failed, fall back to pgid kill
     if not pids:
         try: os.killpg(sid, sig)
         except Exception:
@@ -310,16 +281,13 @@ def _kill_session(sid, hard=False, exclude_pids=None):
             except Exception: pass
 
 # ============================================================
-# TERMINAL — Multi-session with proper controlling terminal
+# TERMINAL
 # ============================================================
 term_sessions = {}
-
-def _get_client_term_sessions(client_id):
-    return term_sessions.setdefault(client_id, {})
+def _get_client_term_sessions(client_id): return term_sessions.setdefault(client_id, {})
 
 def set_winsize(fd, rows, cols):
-    try:
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    try: fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
     except Exception: pass
 
 async def _kill_terminal_session(client_id, session_id):
@@ -327,54 +295,38 @@ async def _kill_terminal_session(client_id, session_id):
     if not sessions: return
     session = sessions.pop(session_id, None)
     if not session: return
-
-    # Remove reader FIRST (before fd closes)
     if not IS_WINDOWS and session.get("master_fd") is not None:
         try:
             loop = asyncio.get_running_loop()
             loop.remove_reader(session["master_fd"])
         except Exception: pass
-
-    # Cancel tasks
     for key in ("reader_task", "monitor_task"):
         t = session.get(key)
         if t:
             try: t.cancel()
             except Exception: pass
-
     if IS_WINDOWS:
         proc = session.get("proc")
         if proc and proc.returncode is None:
             try: proc.terminate()
             except Exception: pass
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            try: await asyncio.wait_for(proc.wait(), timeout=2.0)
             except asyncio.TimeoutError:
                 try: proc.kill()
                 except Exception: pass
             except Exception: pass
     else:
-        # Kill the entire session (bash + children)
         sid = session.get("sid")
         if sid:
             _kill_session(sid, hard=False)
-            # Give it time to die
             for _ in range(20):
-                if not _find_session_pids(sid):
-                    break
+                if not _find_session_pids(sid): break
                 await asyncio.sleep(0.05)
-            # Force kill if still alive
-            if _find_session_pids(sid):
-                _kill_session(sid, hard=True)
-
-        # Reap the shell's pid
+            if _find_session_pids(sid): _kill_session(sid, hard=True)
         pid = session.get("pid")
         if pid:
-            try:
-                os.waitpid(pid, os.WNOHANG)
+            try: os.waitpid(pid, os.WNOHANG)
             except Exception: pass
-
-        # Close master fd
         if session.get("master_fd") is not None:
             try: os.close(session["master_fd"])
             except Exception: pass
@@ -388,98 +340,61 @@ async def _kill_all_client_sessions(client_id):
     term_sessions.pop(client_id, None)
 
 async def start_terminal(client: Connection, session_id: str, rows=30, cols=120):
-    """Start (or restart) a terminal session.
-    On Unix uses pty.fork() so the pty becomes the controlling terminal —
-    this is what makes Ctrl+C actually deliver SIGINT to foreground jobs.
-    """
     await _kill_terminal_session(client.id, session_id)
-
     loop = asyncio.get_running_loop()
     sessions = _get_client_term_sessions(client.id)
 
     if IS_WINDOWS:
         proc = await asyncio.create_subprocess_shell(
             DEFAULT_SHELL,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=WORKSPACE, env=TERM_ENV,
         )
         session = {"proc": proc, "master_fd": None, "user_id": client.session.get("user_id")}
         sessions[session_id] = session
-
         async def reader_win(sess=session, sid=session_id):
             try:
                 while True:
                     chunk = await proc.stdout.read(4096)
                     if not chunk: break
                     try:
-                        await client.send(json.dumps({
-                            "event": "term:output",
-                            "data": {"session_id": sid, "data": base64.b64encode(chunk).decode()}
-                        }))
+                        await client.send(json.dumps({"event": "term:output", "data": {"session_id": sid, "data": base64.b64encode(chunk).decode()}}))
                     except Exception: break
             except Exception: pass
-
         async def monitor_win(sess=session, sid=session_id):
             try:
                 await proc.wait()
                 if sessions.get(sid, {}).get("proc") is proc:
                     sessions.pop(sid, None)
-                    try:
-                        await client.send(json.dumps({
-                            "event": "term:exit",
-                            "data": {"session_id": sid, "code": proc.returncode}
-                        }))
+                    try: await client.send(json.dumps({"event": "term:exit", "data": {"session_id": sid, "code": proc.returncode}}))
                     except Exception: pass
             except Exception: pass
-
         session["reader_task"] = asyncio.create_task(reader_win())
         session["monitor_task"] = asyncio.create_task(monitor_win())
-        await client.send(json.dumps({
-            "event": "term:ready",
-            "data": {"session_id": session_id, "shell": DEFAULT_SHELL, "cwd": WORKSPACE}
-        }))
+        await client.send(json.dumps({"event": "term:ready", "data": {"session_id": session_id, "shell": DEFAULT_SHELL, "cwd": WORKSPACE}}))
         return
 
-    # ---------- Unix: pty.fork() gives us a proper controlling terminal ----------
     try:
         pid, master_fd = pty.fork()
     except Exception as e:
-        await client.send(json.dumps({
-            "event": "term:error",
-            "data": {"session_id": session_id, "error": f"pty.fork failed: {e}"}
-        }))
+        await client.send(json.dumps({"event": "term:error", "data": {"session_id": session_id, "error": f"pty.fork failed: {e}"}}))
         return
 
     if pid == 0:
-        # ---- Child process ----
         try:
             os.chdir(WORKSPACE)
-            # Ensure standard fds point at the slave side
-            # (pty.fork already dup'd them for us)
-            # exec bash -i
             os.execvpe(DEFAULT_SHELL, [DEFAULT_SHELL, "-i"], TERM_ENV)
         except Exception:
             try: os._exit(127)
             except Exception: pass
 
-    # ---- Parent ----
-    try:
-        os.set_blocking(master_fd, False)
+    try: os.set_blocking(master_fd, False)
     except Exception: pass
-
     set_winsize(master_fd, rows, cols)
 
-    # sid == pid for the session leader (bash)
-    session = {
-        "pid": pid,
-        "sid": pid,
-        "master_fd": master_fd,
-        "user_id": client.session.get("user_id"),
-    }
+    session = {"pid": pid, "sid": pid, "master_fd": master_fd, "user_id": client.session.get("user_id")}
     sessions[session_id] = session
-
     read_queue = asyncio.Queue()
 
     def on_readable(fd=master_fd):
@@ -490,12 +405,10 @@ async def start_terminal(client: Connection, session_id: str, rows=30, cols=120)
                 except Exception: pass
                 return
             read_queue.put_nowait(data)
-        except BlockingIOError:
-            pass
+        except BlockingIOError: pass
         except OSError:
             try: loop.remove_reader(fd)
             except Exception: pass
-
     loop.add_reader(master_fd, on_readable)
 
     async def pump(sid=session_id):
@@ -503,59 +416,39 @@ async def start_terminal(client: Connection, session_id: str, rows=30, cols=120)
             while True:
                 chunk = await read_queue.get()
                 try:
-                    await client.send(json.dumps({
-                        "event": "term:output",
-                        "data": {"session_id": sid, "data": base64.b64encode(chunk).decode()}
-                    }))
-                except Exception:
-                    break
-        except asyncio.CancelledError:
-            pass
+                    await client.send(json.dumps({"event": "term:output", "data": {"session_id": sid, "data": base64.b64encode(chunk).decode()}}))
+                except Exception: break
+        except asyncio.CancelledError: pass
 
     async def monitor_unix(sid=session_id, p=pid, fd=master_fd):
         try:
             while True:
                 try:
                     wpid, status = os.waitpid(p, os.WNOHANG)
-                    if wpid == p:
-                        break
-                except ChildProcessError:
-                    break
-                except Exception:
-                    break
+                    if wpid == p: break
+                except ChildProcessError: break
+                except Exception: break
                 await asyncio.sleep(0.4)
             try: loop.remove_reader(fd)
             except Exception: pass
             if sessions.get(sid, {}).get("pid") == p:
                 sessions.pop(sid, None)
-                # Clean up any leftover session processes
                 try: _kill_session(p, hard=True)
                 except Exception: pass
-                try:
-                    await client.send(json.dumps({
-                        "event": "term:exit",
-                        "data": {"session_id": sid, "code": 0}
-                    }))
+                try: await client.send(json.dumps({"event": "term:exit", "data": {"session_id": sid, "code": 0}}))
                 except Exception: pass
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
+        except asyncio.CancelledError: pass
+        except Exception: pass
 
     session["reader_task"] = asyncio.create_task(pump())
     session["monitor_task"] = asyncio.create_task(monitor_unix())
-
-    await client.send(json.dumps({
-        "event": "term:ready",
-        "data": {"session_id": session_id, "shell": DEFAULT_SHELL, "cwd": WORKSPACE}
-    }))
+    await client.send(json.dumps({"event": "term:ready", "data": {"session_id": session_id, "shell": DEFAULT_SHELL, "cwd": WORKSPACE}}))
 
 @app.on("term:start")
 async def ws_term_start(client, data):
     try:
         sid = (data or {}).get("session_id") or "t1"
-        rows = int((data or {}).get("rows", 30))
-        cols = int((data or {}).get("cols", 120))
+        rows = int((data or {}).get("rows", 30)); cols = int((data or {}).get("cols", 120))
         await start_terminal(client, sid, rows, cols)
     except Exception as e:
         try: await client.send(json.dumps({"event": "term:error", "data": {"error": str(e)}}))
@@ -565,8 +458,7 @@ async def ws_term_start(client, data):
 async def ws_term_restart(client, data):
     try:
         sid = (data or {}).get("session_id") or "t1"
-        rows = int((data or {}).get("rows", 30))
-        cols = int((data or {}).get("cols", 120))
+        rows = int((data or {}).get("rows", 30)); cols = int((data or {}).get("cols", 120))
         await start_terminal(client, sid, rows, cols)
     except Exception as e:
         try: await client.send(json.dumps({"event": "term:error", "data": {"error": str(e)}}))
@@ -576,29 +468,25 @@ async def ws_term_restart(client, data):
 async def ws_term_close(client, data):
     try:
         sid = (data or {}).get("session_id")
-        if sid:
-            await _kill_terminal_session(client.id, sid)
+        if sid: await _kill_terminal_session(client.id, sid)
     except Exception: pass
 
 @app.on("term:input")
 async def ws_term_input(client, data):
     try:
-        sid = (data or {}).get("session_id")
-        text = (data or {}).get("text", "")
+        sid = (data or {}).get("session_id"); text = (data or {}).get("text", "")
         if not sid or not text: return
         sessions = term_sessions.get(client.id)
         if not sessions: return
         session = sessions.get(sid)
         if not session: return
-
         if IS_WINDOWS:
             proc = session.get("proc")
             if proc and proc.returncode is None:
                 proc.stdin.write(text.encode()); await proc.stdin.drain()
         else:
             fd = session.get("master_fd")
-            if fd is not None:
-                os.write(fd, text.encode())
+            if fd is not None: os.write(fd, text.encode())
     except Exception: pass
 
 @app.on("term:resize")
@@ -610,11 +498,9 @@ async def ws_term_resize(client, data):
         if not sessions: return
         session = sessions.get(sid)
         if not session: return
-        rows = int((data or {}).get("rows", 30))
-        cols = int((data or {}).get("cols", 120))
+        rows = int((data or {}).get("rows", 30)); cols = int((data or {}).get("cols", 120))
         fd = session.get("master_fd")
-        if fd is not None:
-            set_winsize(fd, rows, cols)
+        if fd is not None: set_winsize(fd, rows, cols)
     except Exception: pass
 
 @app.on("term:set_folder")
@@ -625,28 +511,21 @@ async def ws_term_set_folder(client, data):
         if folder:
             try:
                 check_full = safe_join(folder)
-                if not os.path.isdir(check_full):
-                    folder = ""
-            except Exception:
-                folder = ""
+                if not os.path.isdir(check_full): folder = ""
+            except Exception: folder = ""
         target_sid = (data or {}).get("session_id")
         username = client.session.get("username") or get_username(client.session.get("user_id")) or "user"
         username = re.sub(r"[^\w\-\.]", "", username) or "user"
         display_path = folder if folder else "workspace"
-
-        ps1 = (
-            "\\[\\e[1;32m\\]" + username + "\\[\\e[0m\\]"
-            "\\[\\e[0;33m\\]$\\[\\e[0m\\]"
-            "\\[\\e[1;36m\\]" + display_path + "\\[\\e[0m\\]"
-            "\\[\\e[0;34m\\]$\\[\\e[0m\\] "
-        )
+        ps1 = ("\\[\\e[1;32m\\]" + username + "\\[\\e[0m\\]"
+               "\\[\\e[0;33m\\]$\\[\\e[0m\\]"
+               "\\[\\e[1;36m\\]" + display_path + "\\[\\e[0m\\]"
+               "\\[\\e[0;34m\\]$\\[\\e[0m\\] ")
         cmd = "PS1='" + ps1.replace("'", "'\\''") + "'\n"
         refresh = "\x0c"
-
         sessions = term_sessions.get(client.id)
         if not sessions: return
         targets = [target_sid] if target_sid and target_sid in sessions else list(sessions.keys())
-
         for sid in targets:
             session = sessions.get(sid)
             if not session: continue
@@ -659,8 +538,7 @@ async def ws_term_set_folder(client, data):
                 else:
                     fd = session.get("master_fd")
                     if fd is not None:
-                        os.write(fd, cmd.encode())
-                        os.write(fd, refresh.encode())
+                        os.write(fd, cmd.encode()); os.write(fd, refresh.encode())
             except Exception: pass
     except Exception: pass
 
@@ -668,12 +546,11 @@ async def ws_term_set_folder(client, data):
 async def ws_term_whoami(client, data):
     uid = client.session.get("user_id") or client.id
     username = get_username(uid)
-    try:
-        await client.send(json.dumps({"event": "user:info", "data": {"user_id": uid, "username": username}}))
+    try: await client.send(json.dumps({"event": "user:info", "data": {"user_id": uid, "username": username}}))
     except Exception: pass
 
 # ============================================================
-# MULTI-USER + FILE SYNC WS
+# MULTI-USER + FILE SYNC
 # ============================================================
 @app.on("user:init")
 async def ws_user_init(client, data):
@@ -684,8 +561,7 @@ async def ws_user_init(client, data):
         username = get_username(uid)
         client.session["username"] = username
         await client.send(json.dumps({"event": "user:info", "data": {"user_id": uid, "username": username}}))
-    except Exception as e:
-        print(f"⚠️  user:init error: {e}")
+    except Exception as e: print(f"⚠️  user:init error: {e}")
 
 @app.on("user:rename")
 async def ws_user_rename(client, data):
@@ -696,36 +572,29 @@ async def ws_user_rename(client, data):
         client.session["username"] = name
         await client.send(json.dumps({"event": "user:info", "data": {"user_id": uid, "username": name}}))
         for room in list(client.rooms):
-            if room.startswith("file:"):
-                await broadcast_viewers(room[5:])
-    except Exception as e:
-        print(f"⚠️  user:rename error: {e}")
+            if room.startswith("file:"): await broadcast_viewers(room[5:])
+    except Exception as e: print(f"⚠️  user:rename error: {e}")
 
 @app.on("file:open")
 async def ws_file_open(client, data):
     try:
         path = safe_rel((data or {}).get("path", ""))
         if not path: return
-        open_files = client.session.setdefault("open_files", set())
-        open_files.add(path)
-        room = f"file:{path}"
-        app.join_room(client.id, room)
+        client.session.setdefault("open_files", set()).add(path)
+        app.join_room(client.id, f"file:{path}")
         await broadcast_viewers(path)
-    except Exception as e:
-        print(f"⚠️  file:open error: {e}")
+    except Exception as e: print(f"⚠️  file:open error: {e}")
 
 @app.on("file:close")
 async def ws_file_close(client, data):
     try:
         path = safe_rel((data or {}).get("path", ""))
         if not path: return
-        open_files = client.session.get("open_files")
-        if open_files is not None: open_files.discard(path)
-        room = f"file:{path}"
-        app.leave_room(client.id, room)
+        of = client.session.get("open_files")
+        if of is not None: of.discard(path)
+        app.leave_room(client.id, f"file:{path}")
         await broadcast_viewers(path)
-    except Exception as e:
-        print(f"⚠️  file:close error: {e}")
+    except Exception as e: print(f"⚠️  file:close error: {e}")
 
 @app.on("file:save")
 async def ws_file_save(client, data):
@@ -733,26 +602,19 @@ async def ws_file_save(client, data):
         path = safe_rel((data or {}).get("path", ""))
         content = (data or {}).get("content", "")
         if not path: return
-        try:
-            full = safe_join(path)
-        except Exception:
-            return
+        try: full = safe_join(path)
+        except Exception: return
         if not os.path.isfile(full): return
         ok = await asyncio.to_thread(atomic_write_text, full, content)
         if not ok: return
         uid = client.session.get("user_id") or client.id
         username = client.session.get("username") or get_username(uid)
-        room = f"file:{path}"
-        await app.emit_to_room(room, "file:updated", {
-            "path": path,
-            "content": content,
-            "from_user": uid,
-            "from_client": client.id,
-            "username": username,
-            "timestamp": time.time(),
+        await app.emit_to_room(f"file:{path}", "file:updated", {
+            "path": path, "content": content,
+            "from_user": uid, "from_client": client.id,
+            "username": username, "timestamp": time.time(),
         }, exclude=client.id)
-    except Exception as e:
-        print(f"⚠️  file:save error: {e}")
+    except Exception as e: print(f"⚠️  file:save error: {e}")
 
 async def broadcast_viewers(path):
     try:
@@ -770,26 +632,21 @@ async def broadcast_viewers(path):
         for cid in cids:
             c = app._clients_all.get(cid)
             if not c or c.closed: continue
-            try:
-                await c.send(json.dumps({"event": "file:viewers", "data": payload}))
+            try: await c.send(json.dumps({"event": "file:viewers", "data": payload}))
             except Exception: pass
-    except Exception as e:
-        print(f"⚠️  broadcast_viewers error: {e}")
+    except Exception as e: print(f"⚠️  broadcast_viewers error: {e}")
 
 @app.on_internal("disconnect")
 async def on_ws_disconnect(client, data=None):
-    try:
-        await _kill_all_client_sessions(client.id)
+    try: await _kill_all_client_sessions(client.id)
     except Exception: pass
     try:
-        open_files = list(client.session.get("open_files", set()))
-        for path in open_files:
+        for path in list(client.session.get("open_files", set())):
             await broadcast_viewers(path)
     except Exception: pass
 
 @app.on_internal("connect")
-async def on_ws_connect(client, data=None):
-    pass
+async def on_ws_connect(client, data=None): pass
 
 # ============================================================
 # HTTP — USER
@@ -799,16 +656,14 @@ async def api_get_user(req):
     uid = (req.headers.get("x-user-id") or "").strip()
     if not uid: uid = str(uuid.uuid4())
     touch_user(uid)
-    username = get_username(uid)
-    return json_response({"user_id": uid, "username": username})
+    return json_response({"user_id": uid, "username": get_username(uid)})
 
 @app.post("/api/user")
 async def api_set_user(req):
     data = await req.json()
     uid = (data.get("user_id") or "").strip()
     username = (data.get("username") or "").strip()
-    if not uid or not username:
-        abort(400, "Missing user_id or username")
+    if not uid or not username: abort(400, "Missing user_id or username")
     username = sanitize_username(username)
     await set_username(uid, username)
     return json_response({"success": True, "user_id": uid, "username": username})
@@ -817,8 +672,7 @@ async def api_set_user(req):
 # HTTP — FILES
 # ============================================================
 @app.get("/")
-async def index(req):
-    return HTML_PAGE, "text/html"
+async def index(req): return HTML_PAGE, "text/html"
 
 @app.get("/files")
 async def list_files(req):
@@ -846,16 +700,13 @@ async def file_content(req):
     try:
         with open(full, "r", encoding="utf-8") as f:
             return json_response({"content": f.read(), "isBinary": False})
-    except UnicodeDecodeError:
-        return json_response({"content": "", "isBinary": True})
-    except Exception as e:
-        abort(500, str(e))
+    except UnicodeDecodeError: return json_response({"content": "", "isBinary": True})
+    except Exception as e: abort(500, str(e))
 
 @app.post("/file/save")
 async def file_save(req):
     data = await req.json()
-    path = data.get("path")
-    content = data.get("content", "")
+    path = data.get("path"); content = data.get("content", "")
     if not path: abort(400, "Missing path")
     full = safe_join(path)
     ok = await asyncio.to_thread(atomic_write_text, full, content)
@@ -864,14 +715,11 @@ async def file_save(req):
 
 @app.post("/file/create")
 async def file_create(req):
-    data = await req.json()
-    path = data.get("path")
+    data = await req.json(); path = data.get("path")
     if not path: abort(400, "Missing path")
-    full = safe_join(path)
-    rel = safe_rel(path)
+    full = safe_join(path); rel = safe_rel(path)
     if os.path.exists(full):
-        full = get_unique_path(full)
-        rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
+        full = get_unique_path(full); rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
     def _touch():
         os.makedirs(os.path.dirname(full), exist_ok=True)
         with open(full, "w") as f: f.write("")
@@ -880,21 +728,17 @@ async def file_create(req):
 
 @app.post("/folder/create")
 async def folder_create(req):
-    data = await req.json()
-    path = data.get("path")
+    data = await req.json(); path = data.get("path")
     if not path: abort(400, "Missing path")
-    full = safe_join(path)
-    rel = safe_rel(path)
+    full = safe_join(path); rel = safe_rel(path)
     if os.path.exists(full):
-        full = get_unique_path(full)
-        rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
+        full = get_unique_path(full); rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
     os.makedirs(full, exist_ok=True)
     return json_response({"success": True, "path": rel})
 
 @app.post("/file/delete")
 async def file_delete(req):
-    data = await req.json()
-    path = data.get("path")
+    data = await req.json(); path = data.get("path")
     if not path: abort(400, "Missing path")
     full = safe_join(path)
     if not os.path.exists(full): abort(404, "Not found")
@@ -908,14 +752,12 @@ async def file_rename(req):
     data = await req.json()
     old = data.get("old"); new = data.get("new")
     if not old or not new: abort(400, "Missing old/new")
-    old_full = safe_join(old)
-    new_full = safe_join(new)
+    old_full = safe_join(old); new_full = safe_join(new)
     if not os.path.exists(old_full): abort(404, "Source not found")
     if os.path.realpath(old_full) == WORKSPACE: abort(403, "Cannot rename workspace root")
     rel_new = safe_rel(new)
     if os.path.exists(new_full):
-        new_full = get_unique_path(new_full)
-        rel_new = os.path.relpath(new_full, WORKSPACE).replace("\\", "/")
+        new_full = get_unique_path(new_full); rel_new = os.path.relpath(new_full, WORKSPACE).replace("\\", "/")
     os.makedirs(os.path.dirname(new_full), exist_ok=True)
     os.rename(old_full, new_full)
     return json_response({"success": True, "path": rel_new})
@@ -943,23 +785,20 @@ def parse_multipart(data, boundary):
 @app.post("/upload")
 async def upload(req):
     ct = req.headers.get("content-type", "")
-    if not ct.startswith("multipart/form-data"):
-        abort(400, "Expected multipart")
+    if not ct.startswith("multipart/form-data"): abort(400, "Expected multipart")
     boundary = ct.split("boundary=")[1].strip()
     fields, files = parse_multipart(req.body, boundary)
     if "file" not in files: abort(400, "No file")
     filename, data = files["file"]
     filename = os.path.basename(filename.replace("\\", "/")).strip()
-    if not filename or filename in (".", ".."):
-        abort(400, "Invalid filename")
+    if not filename or filename in (".", ".."): abort(400, "Invalid filename")
     target = safe_rel(fields.get("target", ""))
     rel = f"{target}/{filename}" if target else filename
     rel = safe_rel(rel)
     if not rel: abort(400, "Invalid upload path")
     full = safe_join(rel)
     if os.path.exists(full):
-        full = get_unique_path(full)
-        rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
+        full = get_unique_path(full); rel = os.path.relpath(full, WORKSPACE).replace("\\", "/")
     def _write():
         os.makedirs(os.path.dirname(full), exist_ok=True)
         with open(full, "wb") as f: f.write(data)
@@ -991,7 +830,7 @@ async def download(req):
     return send_file(full, base_dir="", as_attachment=True)
 
 # ============================================================
-# HTML PAGE (unchanged from previous — kept identical)
+# HTML PAGE  (professional UI, paste/copy, full shortcuts)
 # ============================================================
 HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="en">
@@ -1011,7 +850,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   --bg-input:#1a1d27;--border:#242838;--text:#e6e8f0;--text-2:#9aa3bf;
   --text-3:#5f6884;--accent:#e95420;--accent-2:#ff7043;--accent-glow:rgba(233,84,32,0.3);
   --danger:#ff5c78;--success:#4ade80;--warning:#fbbf24;
-  --ubuntu-2:#2c001e;
+  --ubuntu-deep:#1a0011;--ubuntu-bg:#2c001e;--ubuntu-head:#3c0e2c;
   --f-sans:'Inter',-apple-system,sans-serif;
   --f-mono:'Ubuntu Mono','JetBrains Mono','Fira Code',monospace;
   --sidebar:260px;--tab-h:36px;--status-h:22px;--toolbar-h:44px;--crumb-h:30px;
@@ -1028,7 +867,7 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 .brand i{color:var(--accent);font-size:16px}
 .brand span{background:linear-gradient(135deg,var(--accent),#ff9a76);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .brand small{font-weight:400;font-size:10px;color:var(--text-3);-webkit-text-fill-color:var(--text-3)}
-.tbtn{background:transparent;border:none;color:var(--text-2);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;height:36px;min-width:36px;justify-content:center;position:relative}
+.tbtn{background:transparent;border:none;color:var(--text-2);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;height:36px;min-width:36px;justify-content:center;position:relative;transition:.15s}
 .tbtn:hover,.tbtn:active{background:var(--bg-hover);color:var(--text)}
 .tbtn.primary{background:var(--accent);color:#fff;font-weight:500}
 .tbtn i{font-size:13px}
@@ -1064,7 +903,6 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 #breadcrumb::-webkit-scrollbar{display:none}
 #breadcrumb .crumb-root{display:flex;align-items:center;gap:6px;color:var(--accent);cursor:pointer;padding:3px 8px;border-radius:4px;flex-shrink:0}
 #breadcrumb .crumb-root:hover{background:var(--bg-hover)}
-#breadcrumb .crumb-root i{font-size:11px}
 #breadcrumb .sep{color:var(--text-3);flex-shrink:0;font-size:10px}
 #breadcrumb .crumb{color:var(--text-2);cursor:pointer;padding:3px 8px;border-radius:4px;flex-shrink:0;display:flex;align-items:center;gap:4px}
 #breadcrumb .crumb:hover{background:var(--bg-hover);color:var(--text)}
@@ -1084,36 +922,107 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 #empty-state .big{font-size:44px;color:var(--border)}
 #empty-state h2{font-weight:400;font-size:16px;color:var(--text-2)}
 #empty-state .btn{margin-top:6px;background:var(--accent);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:500;min-height:42px;cursor:pointer}
-#term-pane{display:flex;flex-direction:column;background:var(--ubuntu-2);border-top:1px solid var(--border);overflow:hidden;transition:height .25s;flex-shrink:0;height:0;position:relative}
-#term-pane.open{height:52%}
-#term-head{display:flex;align-items:center;padding:0 4px;background:linear-gradient(180deg,#3c0e2c,#2c001e);border-bottom:1px solid #4a2040;height:40px;flex-shrink:0;gap:2px}
-#term-head .title{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:11.5px;color:#ffcec1;cursor:pointer;padding:4px 8px;border-radius:4px;flex-shrink:0}
-#term-head .title:hover{background:rgba(255,255,255,.08)}
+
+/* ========== TERMINAL PANE ========== */
+#term-pane{display:flex;flex-direction:column;background:var(--ubuntu-bg);border-top:1px solid #3c0e2c;overflow:hidden;transition:height .25s;flex-shrink:0;height:0;position:relative}
+#term-pane.open{height:56%}
+
+/* Professional header */
+#term-head{display:flex;align-items:center;padding:0 6px;background:linear-gradient(180deg,#4a1235 0%,#2c001e 100%);border-bottom:1px solid #4a2040;height:44px;flex-shrink:0;gap:4px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+#term-head .title{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:11.5px;color:#ffcec1;cursor:pointer;padding:5px 8px;border-radius:5px;flex-shrink:0;transition:.15s}
+#term-head .title:hover{background:rgba(255,255,255,.06)}
 #term-head .title i.term-ico{color:#e95420}
-#term-head .title .dots{display:flex;gap:4px;margin-right:4px}
-#term-head .title .dots span{width:10px;height:10px;border-radius:50%}
+#term-head .title .dots{display:flex;gap:5px;margin-right:4px}
+#term-head .title .dots span{width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
 .dot-close{background:#ff5f56}
 .dot-min{background:#ffbd2e}
 .dot-max{background:#27c93f}
-#term-tabs{flex:1;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;padding:0 4px;min-width:0}
+
+/* Professional tab bar */
+#term-tabs{flex:1;display:flex;align-items:center;gap:3px;overflow-x:auto;scrollbar-width:none;padding:0 6px;min-width:0;height:100%}
 #term-tabs::-webkit-scrollbar{display:none}
-.term-tab{display:flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(255,255,255,.06);border:1px solid transparent;color:#d9a4bf;border-radius:6px;font-family:var(--f-mono);font-size:11.5px;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:.15s}
-.term-tab:hover{background:rgba(255,255,255,.12);color:#fff}
-.term-tab.active{background:rgba(233,84,32,.35);color:#fff;border-color:#e95420}
-.term-tab i.ti{color:#e95420;font-size:11px}
-.term-tab.active i.ti{color:#fff}
-.term-tab .term-tab-close{font-size:10px;opacity:.6;padding:2px 4px;border-radius:3px;margin-left:2px}
-.term-tab .term-tab-close:hover{background:rgba(0,0,0,.3);opacity:1;color:#fff}
-#term-head .acts{display:flex;gap:2px;flex-shrink:0}
-#term-head .acts button{background:transparent;border:none;color:#d9a4bf;padding:8px;border-radius:4px;font-size:12px;min-width:34px;min-height:34px;cursor:pointer}
-#term-head .acts button:hover,#term-head .acts button:active{background:rgba(255,255,255,.1);color:#fff}
+.term-tab{
+  display:flex;align-items:center;gap:7px;
+  padding:6px 10px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.08);
+  color:#d9a4bf;
+  border-radius:7px;
+  font-family:var(--f-sans);
+  font-size:12px;
+  cursor:pointer;
+  white-space:nowrap;
+  flex-shrink:0;
+  transition:all .18s ease;
+  min-width:104px;
+  max-width:200px;
+  position:relative;
+  user-select:none;
+}
+.term-tab:hover{background:rgba(255,255,255,.11);color:#fff;border-color:rgba(255,255,255,.16)}
+.term-tab.active{
+  background:linear-gradient(180deg,rgba(233,84,32,.38),rgba(233,84,32,.22));
+  color:#fff;
+  border-color:#e95420;
+  box-shadow:0 0 0 1px rgba(233,84,32,.35) inset, 0 2px 8px rgba(233,84,32,.2);
+}
+.term-tab .tab-num{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;
+  background:rgba(0,0,0,.35);
+  border-radius:4px;
+  font-size:9.5px;font-weight:700;color:#ffcec1;
+  flex-shrink:0;
+  font-family:var(--f-mono);
+}
+.term-tab.active .tab-num{background:rgba(255,255,255,.28);color:#fff}
+.term-tab .status-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:#4ade80;flex-shrink:0;
+  box-shadow:0 0 6px rgba(74,222,128,.6);
+}
+.term-tab .status-dot.busy{
+  background:#fbbf24;
+  box-shadow:0 0 6px rgba(251,191,36,.6);
+  animation:tabpulse 1.4s ease-in-out infinite;
+}
+@keyframes tabpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.term-tab .tab-name{flex:1;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.term-tab .term-tab-close{
+  font-size:10px;opacity:.5;padding:3px 5px;border-radius:4px;
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  transition:.12s;
+}
+.term-tab .term-tab-close:hover{opacity:1;background:rgba(0,0,0,.4);color:#fff}
+.term-tab.renaming .tab-name{display:none}
+
+#term-head .acts{display:flex;gap:2px;flex-shrink:0;padding-left:4px;border-left:1px solid rgba(255,255,255,.1)}
+#term-head .acts button{
+  background:transparent;border:none;color:#d9a4bf;
+  padding:0;border-radius:5px;font-size:12px;
+  width:34px;height:34px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.15s;
+}
+#term-head .acts button:hover{background:rgba(255,255,255,.12);color:#fff}
+#term-head .acts button:active{transform:scale(.94)}
+#term-head .acts button.warn:hover{background:rgba(255,92,120,.22);color:#ff7588}
+
+/* Terminal body */
 #term-body{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;min-height:0}
-#term-stack-wrap{flex:1;position:relative;min-height:0;background:#2c001e}
+#term-stack-wrap{flex:1;position:relative;min-height:0;background:var(--ubuntu-deep)}
 #terminal-stack{position:absolute;inset:0}
 .term-wrapper{position:absolute;inset:0;display:none}
 .term-wrapper.active{display:block}
-.term-wrapper .xterm{height:100%;width:100%;padding:4px 2px 2px 6px}
-.term-wrapper .xterm-viewport{background:transparent !important;-webkit-overflow-scrolling:touch}
+.term-wrapper .xterm{height:100%;width:100%}
+.term-wrapper .xterm-screen{padding:8px 6px 8px 10px}
+.term-wrapper .xterm-viewport{background:transparent !important;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#7a3a5f var(--ubuntu-deep)}
+.term-wrapper .xterm-viewport::-webkit-scrollbar{width:8px;height:8px}
+.term-wrapper .xterm-viewport::-webkit-scrollbar-track{background:transparent}
+.term-wrapper .xterm-viewport::-webkit-scrollbar-thumb{background:#7a3a5f;border-radius:4px;border:2px solid var(--ubuntu-deep)}
+.term-wrapper .xterm-viewport::-webkit-scrollbar-thumb:hover{background:#a04a7f}
+
+/* Tap-to-type overlay */
 #tap-to-type{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(44,0,30,.9);z-index:50;cursor:pointer}
 #tap-to-type.show{display:flex}
 #tap-to-type .inner{text-align:center;color:#ffcec1;font-family:var(--f-sans);pointer-events:none}
@@ -1121,20 +1030,79 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 #tap-to-type .inner h3{font-size:16px;font-weight:500;margin-bottom:6px}
 #tap-to-type .inner p{font-size:12px;color:#d9a4bf}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
-#key-bar-wrap{display:none;background:#3c0e2c;border-top:1px solid #4a2040;flex-shrink:0;position:relative;z-index:20}
+
+/* ========== PROFESSIONAL KEY BAR ========== */
+#key-bar-wrap{display:none;background:linear-gradient(180deg,#3c0e2c,#2c001e);border-top:1px solid #4a2040;flex-shrink:0;position:relative;z-index:20;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 #key-bar-wrap.open{display:block}
 #key-bar-scroller{position:relative;display:flex;flex-direction:row;align-items:stretch;overflow:hidden}
-#key-bar{flex:1 1 auto;display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));grid-auto-rows:42px;gap:6px;padding:6px 8px;overflow-y:auto;overflow-x:hidden;max-height:180px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#7a3a5f transparent;overscroll-behavior:contain;touch-action:pan-y}
-#key-bar::-webkit-scrollbar{width:4px}
-#key-bar::-webkit-scrollbar-thumb{background:#7a3a5f;border-radius:2px}
+#key-bar{
+  flex:1 1 auto;
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  grid-auto-rows:38px;
+  gap:5px;
+  padding:8px 10px 10px 10px;
+  overflow-y:auto;overflow-x:hidden;
+  max-height:220px;
+  scroll-behavior:smooth;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;scrollbar-color:#7a3a5f transparent;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
+}
+#key-bar::-webkit-scrollbar{width:5px}
+#key-bar::-webkit-scrollbar-thumb{background:#7a3a5f;border-radius:3px}
 #key-bar::-webkit-scrollbar-track{background:transparent}
-.kk{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#ffcec1;padding:0;border-radius:6px;font-family:var(--f-mono);font-size:12px;height:42px;min-width:0;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;cursor:pointer;white-space:nowrap;touch-action:manipulation}
-.kk:active,.kk:hover{background:rgba(233,84,32,.45);border-color:#e95420;color:#fff}
+.kk-section{
+  grid-column:1 / -1;
+  display:flex;align-items:center;gap:6px;
+  font-size:9.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;
+  color:rgba(255,206,193,.5);
+  padding:8px 2px 3px 2px;
+  margin-top:2px;
+  border-top:1px solid rgba(255,255,255,.06);
+  height:16px;
+}
+.kk-section:first-child{border-top:none;margin-top:0;padding-top:2px}
+.kk-section i{font-size:9px;opacity:.7}
+.kk{
+  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03));
+  border:1px solid rgba(255,255,255,.12);
+  color:#ffcec1;
+  padding:0;border-radius:6px;
+  font-family:var(--f-mono);font-size:11.5px;font-weight:600;
+  height:38px;min-width:0;
+  display:flex;align-items:center;justify-content:center;
+  user-select:none;-webkit-user-select:none;
+  cursor:pointer;white-space:nowrap;touch-action:manipulation;
+  transition:background .12s, border-color .12s, transform .08s;
+  letter-spacing:.2px;
+}
+.kk:hover{background:linear-gradient(180deg,rgba(233,84,32,.35),rgba(233,84,32,.2));border-color:#e95420;color:#fff}
+.kk:active{transform:scale(.96);background:rgba(233,84,32,.55);border-color:#ff7043}
 .kk i{font-size:12px}
-.kb-nav{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;padding:6px 6px;background:#3c0e2c;border-left:1px solid #4a2040;width:38px}
-.kb-nav button{flex:1;min-height:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#ffcec1;border-radius:5px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;padding:0;transition:background .12s, opacity .12s}
-.kb-nav button:hover:not(:disabled),.kb-nav button:active:not(:disabled){background:rgba(233,84,32,.35);border-color:#e95420;color:#fff}
-.kb-nav button:disabled,.kb-nav button.disabled{opacity:.28;cursor:default;background:rgba(255,255,255,.04)}
+.kk.accent{color:#ffb59b;border-color:rgba(233,84,32,.35)}
+.kk.accent:hover{color:#fff}
+.kk.paste{background:linear-gradient(180deg,rgba(108,140,255,.35),rgba(108,140,255,.15));border-color:rgba(108,140,255,.4);color:#c8d5ff}
+.kk.paste:hover{background:linear-gradient(180deg,rgba(108,140,255,.55),rgba(108,140,255,.3));border-color:#6c8cff;color:#fff}
+.kk.copy{background:linear-gradient(180deg,rgba(74,222,128,.3),rgba(74,222,128,.12));border-color:rgba(74,222,128,.35);color:#c4f5d4}
+.kk.copy:hover{background:linear-gradient(180deg,rgba(74,222,128,.5),rgba(74,222,128,.25));border-color:#4ade80;color:#fff}
+
+/* Right-side nav */
+.kb-nav{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;padding:8px 8px;background:rgba(0,0,0,.2);border-left:1px solid rgba(255,255,255,.06);width:42px}
+.kb-nav button{
+  flex:1;min-height:28px;
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.12);
+  color:#ffcec1;border-radius:6px;cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;padding:0;
+  transition:background .12s, opacity .12s, transform .08s;
+}
+.kb-nav button:hover:not(:disabled){background:rgba(233,84,32,.4);border-color:#e95420;color:#fff}
+.kb-nav button:active:not(:disabled){transform:scale(.94)}
+.kb-nav button:disabled,.kb-nav button.disabled{opacity:.25;cursor:default;background:rgba(255,255,255,.03)}
+
+/* Status bar */
 #status{display:flex;align-items:center;gap:12px;padding:0 10px;height:var(--status-h);background:var(--bg-surface);border-top:1px solid var(--border);font-size:10.5px;color:var(--text-3);flex-shrink:0;font-family:var(--f-mono);overflow:hidden}
 #status .it{display:flex;align-items:center;gap:5px;flex-shrink:0}
 #status .d{width:7px;height:7px;border-radius:50%}
@@ -1142,50 +1110,68 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 #status .d.dirty{background:var(--warning)}
 #status .d.term{background:#4ade80}
 #status .s{flex:1}
+#status .hint{color:var(--text-3);font-size:9.5px;opacity:.7}
+#status kbd{display:inline-block;padding:1px 5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:3px;font-family:var(--f-mono);font-size:9px;color:var(--text-2);margin:0 2px}
+
+/* Menus */
 #ctx{position:fixed;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:5px 0;min-width:200px;box-shadow:0 12px 40px rgba(0,0,0,.7);z-index:9999;display:none}
-#ctx .mi{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:13.5px;color:var(--text-2);min-height:44px;cursor:pointer}
-#ctx .mi:hover,#ctx .mi:active{background:var(--bg-hover);color:var(--text)}
+#ctx .mi{display:flex;align-items:center;gap:12px;padding:11px 16px;font-size:13px;color:var(--text-2);min-height:40px;cursor:pointer}
+#ctx .mi:hover{background:var(--bg-hover);color:var(--text)}
 #ctx .mi i{width:18px;font-size:13px;color:var(--text-3);text-align:center}
 #ctx .mi.danger{color:var(--danger)}
+#ctx .mi kbd{margin-left:auto;padding:2px 6px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:4px;font-family:var(--f-mono);font-size:10px;color:var(--text-3)}
 #ctx .div{height:1px;background:var(--border);margin:4px 10px}
-#modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:10000;padding:16px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:10000;padding:16px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
 #modal.show{display:flex}
-#mbox{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:20px 22px;max-width:420px;width:100%}
-#mbox h3{font-size:15px;margin-bottom:4px}
+#mbox{background:var(--bg-surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.7)}
+#mbox h3{font-size:15px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+#mbox h3 i{color:var(--accent)}
 #mbox p{font-size:12.5px;color:var(--text-2);margin-bottom:14px}
 #mbox input{width:100%;padding:12px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;min-height:44px;outline:none}
-#mbox input:focus{border-color:var(--accent)}
+#mbox input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 #mbox .acts{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
 #mbox .acts button{padding:10px 18px;border-radius:8px;border:none;font-size:13.5px;min-height:42px;min-width:80px;cursor:pointer}
 .btn-c{background:transparent;color:var(--text-2)}
+.btn-c:hover{background:var(--bg-hover)}
 .btn-k{background:var(--accent);color:#fff;font-weight:500}
-#toast{position:fixed;bottom:calc(60px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(12px);background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:13px;z-index:99999;opacity:0;pointer-events:none;transition:.25s;max-width:calc(100vw - 32px)}
+.btn-k:hover{background:var(--accent-2)}
+
+/* Toast */
+#toast{position:fixed;bottom:calc(60px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(12px);background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:13px;z-index:99999;opacity:0;pointer-events:none;transition:.25s;max-width:calc(100vw - 32px);box-shadow:0 12px 40px rgba(0,0,0,.5)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.success{border-color:var(--success)}
 #toast.error{border-color:var(--danger)}
 #toast.info{border-color:var(--accent)}
+#toast i{font-size:14px;margin-right:6px}
 #loading{position:fixed;inset:0;background:rgba(11,13,18,.9);display:none;align-items:center;justify-content:center;z-index:99998;flex-direction:column;gap:14px}
 #loading.show{display:flex}
 .spinner{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 #loading .lbl{font-size:14px;color:var(--text-2)}
+
+/* Responsive */
 @media (max-width:820px){
   .brand small{display:none}
   .tbtn span{display:none}
-  #term-pane.open{height:58%}
+  #term-pane.open{height:60%}
+  .term-tab{min-width:90px;font-size:11.5px}
+  .kk{font-size:11px;height:36px}
+  #key-bar{grid-auto-rows:36px}
 }
 @media (max-width:600px){
   :root{--toolbar-h:46px}
   #sidebar{position:absolute;left:0;top:0;bottom:0;width:280px;min-width:280px;transform:translateX(-100%);box-shadow:6px 0 30px rgba(0,0,0,.6)}
   #sidebar.open{transform:translateX(0)}
   #mobile-toggle{display:inline-flex !important}
-  #term-pane.open{height:66%}
+  #term-pane.open{height:68%}
+  .term-tab .tab-num{display:none}
 }
 @media (max-width:400px){
   .brand span{display:none}
   .brand{font-size:0}
   .brand i{font-size:20px}
-  #term-pane.open{height:72%}
+  #term-pane.open{height:74%}
+  .kk{font-size:10.5px}
 }
 </style>
 </head>
@@ -1233,7 +1219,7 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
         </div>
         <div id="term-pane">
           <div id="term-head">
-            <div class="title" id="term-title-btn" title="Click to change username">
+            <div class="title" id="term-title-btn" title="Change username">
               <div class="dots">
                 <span class="dot-close"></span><span class="dot-min"></span><span class="dot-max"></span>
               </div>
@@ -1242,12 +1228,12 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
             </div>
             <div id="term-tabs"></div>
             <div class="acts">
-              <button id="term-new" title="New terminal"><i class="fas fa-plus"></i></button>
+              <button id="term-new" title="New terminal (Ctrl+Shift+T)"><i class="fas fa-plus"></i></button>
               <button id="term-user" title="Change username"><i class="fas fa-user-pen"></i></button>
-              <button id="term-keys" title="Keys"><i class="fas fa-keyboard"></i></button>
-              <button id="term-clear" title="Clear"><i class="fas fa-eraser"></i></button>
-              <button id="term-restart" title="Restart"><i class="fas fa-rotate-right"></i></button>
-              <button id="term-close" title="Close"><i class="fas fa-times"></i></button>
+              <button id="term-keys" title="Toggle key bar"><i class="fas fa-keyboard"></i></button>
+              <button id="term-clear" title="Clear (Ctrl+L)"><i class="fas fa-eraser"></i></button>
+              <button id="term-restart" title="Restart session"><i class="fas fa-rotate-right"></i></button>
+              <button id="term-close" class="warn" title="Close panel (Ctrl+`)"><i class="fas fa-times"></i></button>
             </div>
           </div>
           <div id="term-body">
@@ -1264,6 +1250,7 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
             <div id="key-bar-wrap">
               <div id="key-bar-scroller">
                 <div id="key-bar">
+                  <div class="kk-section"><i class="fas fa-arrows-up-down-left-right"></i> Navigation</div>
                   <div class="kk" data-k="\u001b[A"><i class="fas fa-arrow-up"></i></div>
                   <div class="kk" data-k="\u001b[B"><i class="fas fa-arrow-down"></i></div>
                   <div class="kk" data-k="\u001b[D"><i class="fas fa-arrow-left"></i></div>
@@ -1272,22 +1259,38 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
                   <div class="kk" data-k="\u001b">Esc</div>
                   <div class="kk" data-k="\r">Enter</div>
                   <div class="kk" data-k="\u007f">Bksp</div>
-                  <div class="kk" data-k="\u0003">^C</div>
+
+                  <div class="kk-section"><i class="fas fa-bolt"></i> Interrupt</div>
+                  <div class="kk accent" data-k="\u0003">^C</div>
                   <div class="kk" data-k="\u0004">^D</div>
-                  <div class="kk" data-k="\u000c">^L</div>
                   <div class="kk" data-k="\u001a">^Z</div>
+                  <div class="kk" data-k="\u000c">^L</div>
                   <div class="kk" data-k="\u0017">^W</div>
-                  <div class="kk" data-k="\u000f">^O</div>
-                  <div class="kk" data-k="\u0018">^X</div>
+                  <div class="kk" data-k="\u0019">^Y</div>
+                  <div class="kk" data-k="\u0012">^R</div>
                   <div class="kk" data-k="\u0013">^S</div>
+
+                  <div class="kk-section"><i class="fas fa-file-pen"></i> File (nano / vim)</div>
+                  <div class="kk accent" data-k="\u000f">^O</div>
+                  <div class="kk accent" data-k="\u0018">^X</div>
                   <div class="kk" data-k="\u0001">^A</div>
                   <div class="kk" data-k="\u0005">^E</div>
                   <div class="kk" data-k="\u000b">^K</div>
                   <div class="kk" data-k="\u0015">^U</div>
-                  <div class="kk" data-k="\u0012">^R</div>
-                  <div class="kk" data-k="\u0019">^Y</div>
-                  <div class="kk wide" data-k="\u001b[1;5C">Ctrl→</div>
-                  <div class="kk wide" data-k="\u001b[1;5D">Ctrl←</div>
+                  <div class="kk" data-k="\u0010">^P</div>
+                  <div class="kk" data-k="\u000e">^N</div>
+
+                  <div class="kk-section"><i class="fas fa-copy"></i> Clipboard</div>
+                  <div class="kk paste" id="kk-paste"><i class="fas fa-paste"></i></div>
+                  <div class="kk copy" id="kk-copy"><i class="fas fa-copy"></i></div>
+                  <div class="kk" id="kk-select-all"><i class="fas fa-object-group"></i></div>
+                  <div class="kk" id="kk-clear"><i class="fas fa-eraser"></i></div>
+                  <div class="kk" id="kk-font-dec"><i class="fas fa-minus"></i></div>
+                  <div class="kk" id="kk-font-reset"><i class="fas fa-font"></i></div>
+                  <div class="kk" id="kk-font-inc"><i class="fas fa-plus"></i></div>
+                  <div class="kk" id="kk-restart"><i class="fas fa-rotate-right"></i></div>
+
+                  <div class="kk-section"><i class="fas fa-keyboard"></i> Symbols</div>
                   <div class="kk" data-k="|">|</div>
                   <div class="kk" data-k="~">~</div>
                   <div class="kk" data-k="/">/</div>
@@ -1330,9 +1333,9 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
       </div>
       <div id="status">
         <span class="it"><span class="d saved" id="st-dot"></span><span id="st-label">Ready</span></span>
-        <span class="it" id="st-term" style="display:none"><span class="d term"></span>terminal</span>
+        <span class="it" id="st-term" style="display:none"><span class="d term"></span><span id="st-term-name">terminal</span></span>
         <span class="s"></span>
-        <span class="it" id="st-viewers"></span>
+        <span class="it hint" id="st-hint">Ctrl+Shift+V paste · Ctrl+Tab switch · Ctrl+T new</span>
         <span class="it" id="st-path">workspace</span>
         <span class="it" id="st-lang">plaintext</span>
         <span class="it" id="st-cursor">Ln 1, Col 1</span>
@@ -1368,6 +1371,7 @@ body{height:100dvh;padding-top:var(--safe-top);padding-bottom:var(--safe-bot)}
 
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
 <script>
   var require = { paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.39.0/min/vs' } };
 </script>
@@ -1405,6 +1409,7 @@ let monaco, editor, editorModel;
 let mainClient = null;
 let termFocused = false;
 let suppressOverlayUntil = 0;
+let savedFontSize = parseInt(localStorage.getItem('cf_fontsize') || '0', 10) || 0;
 const $ = (id) => document.getElementById(id);
 const isMobile = () => window.matchMedia('(max-width: 820px)').matches;
 const isTouch = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -1445,7 +1450,7 @@ function iconOf(name, isDir){
 function toast(msg, type='info'){
   const t = $('toast');
   const ic = type==='success'?'fa-check-circle':type==='error'?'fa-exclamation-circle':'fa-info-circle';
-  t.innerHTML = '<i class="fas '+ic+'"></i> '+msg;
+  t.innerHTML = '<i class="fas '+ic+'"></i>'+msg;
   t.className = 'show ' + type;
   clearTimeout(t._t);
   t._t = setTimeout(()=>t.className='', 2600);
@@ -1490,14 +1495,8 @@ async function syncUser(){
   try{
     const r = await fetch('/api/user', { headers: { 'X-User-Id': S.user_id } });
     const d = await r.json();
-    if(d.user_id && d.user_id !== S.user_id){
-      S.user_id = d.user_id;
-      localStorage.setItem('cf_user_id', d.user_id);
-    }
-    if(d.username){
-      S.username = d.username;
-      localStorage.setItem('cf_username', d.username);
-    }
+    if(d.user_id && d.user_id !== S.user_id){ S.user_id = d.user_id; localStorage.setItem('cf_user_id', d.user_id); }
+    if(d.username){ S.username = d.username; localStorage.setItem('cf_username', d.username); }
     updateTermTitle();
   }catch(e){}
 }
@@ -1524,13 +1523,11 @@ function updateTermTitle(){
   const shellName = t.textContent.split(' — ')[0] || 'bash';
   t.textContent = shellName + ' — ' + S.username;
 }
-
 function updatePrompt(){
   if(!mainClient || !mainClient.ws || mainClient.ws.readyState !== WebSocket.OPEN) return;
   mainClient.emit('term:set_folder', { folder: S.currentFolder || "" });
   updateTermTitle();
 }
-
 function navigateTo(rawPath){
   const norm = normalizePath(rawPath);
   if(!norm){ S.currentFolder = ""; }
@@ -1539,10 +1536,8 @@ function navigateTo(rawPath){
     if(node && node.type === "folder"){ S.currentFolder = norm; }
     else { S.currentFolder = ""; }
   }
-  renderTree();
-  renderBreadcrumb();
+  renderTree(); renderBreadcrumb();
 }
-
 function validateCurrentFolder(){
   if(!S.currentFolder) return;
   const norm = normalizePath(S.currentFolder);
@@ -1559,21 +1554,14 @@ function validateCurrentFolder(){
   }
   S.currentFolder = "";
 }
-
 async function loadTree(){
   try{
     const d = await fsTree();
-    S.tree = d.tree;
-    S.map.clear();
+    S.tree = d.tree; S.map.clear();
     (function walk(nodes){
-      for(const n of nodes){
-        S.map.set(n.path, n);
-        if(n.children) walk(n.children);
-      }
+      for(const n of nodes){ S.map.set(n.path, n); if(n.children) walk(n.children); }
     })(S.tree);
-    validateCurrentFolder();
-    renderTree();
-    renderBreadcrumb();
+    validateCurrentFolder(); renderTree(); renderBreadcrumb();
   }catch(e){ toast('Tree: '+e.message,'error'); }
 }
 function viewersForPath(path){
@@ -1598,8 +1586,7 @@ function renderNode(node, depth){
   const current = (dir && S.currentFolder === node.path) ? 'current' : '';
   const others = viewersForPath(node.path);
   const avatars = others.length
-    ? '<span class="mini-av">' + others.slice(0,3).map(v =>
-        '<span class="av" title="'+v.username+'">'+initial(v.username)+'</span>').join('') + '</span>'
+    ? '<span class="mini-av">' + others.slice(0,3).map(v => '<span class="av" title="'+v.username+'">'+initial(v.username)+'</span>').join('') + '</span>'
     : '';
   const kids = dir && node.children && node.children.length ?
     '<div class="ft-kids">'+node.children.map(c=>renderNode(c,depth+1)).join('')+'</div>' : '';
@@ -1612,19 +1599,13 @@ function bindTree(){
       if(e.target.closest('.chev')){ e.stopPropagation(); toggleNode(el.dataset.p, el); return; }
       const node = S.map.get(el.dataset.p);
       if(!node) return;
-      if(node.type==='folder'){
-        navigateTo(node.path);
-        toggleNode(el.dataset.p, el);
-      } else {
-        openFile(el.dataset.p);
-        if(isMobile()) closeSidebar();
-      }
+      if(node.type==='folder'){ navigateTo(node.path); toggleNode(el.dataset.p, el); }
+      else { openFile(el.dataset.p); if(isMobile()) closeSidebar(); }
     };
     el.oncontextmenu = e=>{
       e.preventDefault();
       const node = S.map.get(el.dataset.p);
-      if(!node) return;
-      showCtx(e.clientX, e.clientY, node);
+      if(node) showCtx(e.clientX, e.clientY, node);
     };
     let tmr = null, moved = false;
     el.addEventListener('touchstart', (e)=>{
@@ -1633,10 +1614,7 @@ function bindTree(){
         if(moved) return;
         const touch = e.touches[0] || e.changedTouches[0];
         const node = S.map.get(el.dataset.p);
-        if(node){
-          if(navigator.vibrate) navigator.vibrate(15);
-          showCtx(touch.clientX, touch.clientY, node);
-        }
+        if(node){ if(navigator.vibrate) navigator.vibrate(15); showCtx(touch.clientX, touch.clientY, node); }
         tmr = null;
       }, 500);
     }, {passive:true});
@@ -1651,15 +1629,11 @@ function toggleNode(path, el){
   const chev = el.querySelector('.chev');
   const kids = el.nextElementSibling;
   if(kids && kids.classList.contains('ft-kids')){
-    kids.classList.toggle('collapsed');
-    if(chev) chev.classList.toggle('open');
-  } else {
-    if(chev) chev.classList.toggle('open');
-  }
+    kids.classList.toggle('collapsed'); if(chev) chev.classList.toggle('open');
+  } else { if(chev) chev.classList.toggle('open'); }
 }
 function openSidebar(){ $('sidebar').classList.add('open'); $('sb-backdrop').classList.add('show'); }
 function closeSidebar(){ $('sidebar').classList.remove('open'); $('sb-backdrop').classList.remove('show'); }
-
 function renderBreadcrumb(){
   const bc = $('breadcrumb');
   const parts = S.currentFolder ? S.currentFolder.split('/') : [];
@@ -1682,7 +1656,6 @@ function renderBreadcrumb(){
   $('st-path').textContent = S.currentFolder || 'workspace';
   updatePrompt();
 }
-
 function downloadCurrent(){
   let path = '';
   if (S.active) { const n = S.map.get(S.active); path = n ? S.active : ''; }
@@ -1698,7 +1671,6 @@ function download(path){
   window.location.href = url;
   toast('Downloading ' + (path ? base(path) : 'workspace') + ' …', 'info');
 }
-
 function showCtx(x, y, node){
   S.ctx = node;
   const m = $('ctx');
@@ -1711,14 +1683,13 @@ document.addEventListener('click', ()=>$('ctx').style.display='none');
 document.addEventListener('contextmenu', (e)=>{ if(!e.target.closest('.ft-item')) $('ctx').style.display='none'; });
 $('ctx').querySelectorAll('.mi').forEach(el=>{
   el.onclick = async ()=>{
-    const a = el.dataset.a;
-    const node = S.ctx;
+    const a = el.dataset.a; const node = S.ctx;
     $('ctx').style.display = 'none';
     if(!node) return;
     const isDir = node.type === 'folder';
     const parentDir = isDir ? node.path : parent(node.path);
     switch(a){
-      case 'open': if(!isDir) openFile(node.path); else { navigateTo(node.path); } break;
+      case 'open': if(!isDir) openFile(node.path); else navigateTo(node.path); break;
       case 'new-file': await doNewFile(parentDir); break;
       case 'new-folder': await doNewFolder(parentDir); break;
       case 'run': await runInTerminal(node.path); break;
@@ -1728,19 +1699,14 @@ $('ctx').querySelectorAll('.mi').forEach(el=>{
     }
   };
 });
-
 async function doNewFile(parentDir){
   const name = await modal('New File','Enter file name:','file.py');
   if(!name) return;
   const safeName = name.replace(/[/\\]/g, "").trim();
   if(!safeName) return;
   const path = parentDir ? join(parentDir, safeName) : safeName;
-  try{
-    const r = await fsNewFile(path);
-    await loadTree();
-    await openFile(r.path);
-    toast('Created '+safeName,'success');
-  }catch(e){ toast(e.message,'error'); }
+  try{ const r = await fsNewFile(path); await loadTree(); await openFile(r.path); toast('Created '+safeName,'success'); }
+  catch(e){ toast(e.message,'error'); }
 }
 async function doNewFolder(parentDir){
   const name = await modal('New Folder','Enter folder name:','new-folder');
@@ -1748,11 +1714,8 @@ async function doNewFolder(parentDir){
   const safeName = name.replace(/[/\\]/g, "").trim();
   if(!safeName) return;
   const path = parentDir ? join(parentDir, safeName) : safeName;
-  try{
-    await fsNewFolder(path);
-    await loadTree();
-    toast('Created '+safeName,'success');
-  }catch(e){ toast(e.message,'error'); }
+  try{ await fsNewFolder(path); await loadTree(); toast('Created '+safeName,'success'); }
+  catch(e){ toast(e.message,'error'); }
 }
 async function doRename(node){
   const nn = await modal('Rename','Rename "'+node.name+'":', node.name);
@@ -1782,9 +1745,7 @@ async function doDelete(node){
       if(inside && f._model) f._model.dispose();
       return !inside;
     });
-    if(S.currentFolder === node.path || S.currentFolder.startsWith(node.path + '/')){
-      S.currentFolder = parent(node.path);
-    }
+    if(S.currentFolder === node.path || S.currentFolder.startsWith(node.path + '/')) S.currentFolder = parent(node.path);
     if(S.active && (S.active === node.path || S.active.startsWith(node.path+'/'))){
       S.active = S.files.length ? S.files[S.files.length-1].path : null;
       if(!S.active){ if(editor) editor.setModel(null); $('empty-state').style.display='flex'; }
@@ -1793,7 +1754,6 @@ async function doDelete(node){
     toast('Deleted '+node.name,'success');
   }catch(e){ toast(e.message,'error'); }
 }
-
 async function openFile(path){
   path = normalizePath(path);
   if(!path) return;
@@ -1805,13 +1765,9 @@ async function openFile(path){
     unloading();
     if(r.isBinary){ toast('Binary file cannot be opened','error'); return; }
     const f = { path, content: r.content||'', dirty:false, lang: langOf(ext(path)), _model:null, _lastLocalEdit: 0 };
-    S.files.push(f);
-    S.active = path;
+    S.files.push(f); S.active = path;
     $('empty-state').style.display = 'none';
-    focusEditor(path);
-    renderTabs();
-    updateStatus();
-    attachRoom(path);
+    focusEditor(path); renderTabs(); updateStatus(); attachRoom(path);
   }catch(e){ unloading(); toast(e.message,'error'); }
 }
 function attachRoom(path){
@@ -1841,8 +1797,7 @@ function renderTabs(){
     const dirty = f.dirty ? '<i class="fas fa-circle" style="font-size:5px;color:var(--accent)"></i>' : '';
     const others = viewersForPath(f.path);
     const avs = others.length
-      ? '<span class="viewers">' + others.slice(0,3).map(v =>
-          '<span class="av" title="'+v.username+'">'+initial(v.username)+'</span>').join('') + '</span>'
+      ? '<span class="viewers">' + others.slice(0,3).map(v => '<span class="av" title="'+v.username+'">'+initial(v.username)+'</span>').join('') + '</span>'
       : '';
     return '<div class="tab '+(S.active===f.path?'active':'')+'" data-p="'+f.path+'"><i class="fas '+ico+' ic"></i><span>'+name+'</span>'+dirty+avs+'<span class="close" data-p="'+f.path+'"><i class="fas fa-times"></i></span></div>';
   }).join('');
@@ -1850,8 +1805,7 @@ function renderTabs(){
     el.onclick = e=>{
       if(e.target.closest('.close')) return;
       S.active = el.dataset.p;
-      focusEditor(S.active); renderTabs(); updateStatus();
-      attachRoom(S.active);
+      focusEditor(S.active); renderTabs(); updateStatus(); attachRoom(S.active);
     };
   });
   c.querySelectorAll('.close').forEach(el=>{
@@ -1877,35 +1831,20 @@ function renderTabs(){
   });
 }
 function updateStatus(){
-  const dot = $('st-dot'), lbl = $('st-label'), lang = $('st-lang'), viewersEl = $('st-viewers');
+  const dot = $('st-dot'), lbl = $('st-label'), lang = $('st-lang');
   const f = S.files.find(x=>x.path===S.active);
   if(f){
     dot.className = 'd ' + (f.dirty ? 'dirty' : 'saved');
     lbl.textContent = f.dirty ? 'Unsaved' : 'Saved';
     lang.textContent = f.lang || 'plaintext';
-    const others = viewersForPath(f.path);
-    if(others.length){
-      viewersEl.className = 'it viewers-status';
-      viewersEl.innerHTML = '<i class="fas fa-users"></i> ' + others.slice(0,4).map(v =>
-        '<span class="av" title="'+v.username+'">'+initial(v.username)+'</span>').join('') +
-        ' <span style="margin-left:4px">' + others.length + ' editing</span>';
-    } else {
-      viewersEl.className = '';
-      viewersEl.innerHTML = '';
-    }
   } else {
-    dot.className = 'd saved';
-    lbl.textContent = 'Ready';
-    lang.textContent = 'plaintext';
-    viewersEl.className = '';
-    viewersEl.innerHTML = '';
+    dot.className = 'd saved'; lbl.textContent = 'Ready'; lang.textContent = 'plaintext';
   }
 }
 async function saveFile(path){
   const f = S.files.find(x=>x.path===path);
   if(!f || !f.dirty) return;
-  f.dirty = false;
-  renderTabs(); updateStatus();
+  f.dirty = false; renderTabs(); updateStatus();
   if(mainClient && mainClient.ws && mainClient.ws.readyState === WebSocket.OPEN){
     mainClient.emit('file:save', { path: f.path, content: f.content });
   } else {
@@ -1922,8 +1861,7 @@ function initMonaco(){
         value:'', language:'plaintext', theme:'vs-dark', automaticLayout:true,
         fontSize: mobile ? 13 : 13.5,
         fontFamily:'JetBrains Mono, Ubuntu Mono, monospace',
-        minimap:{enabled:false},
-        tabSize:2, insertSpaces:true,
+        minimap:{enabled:false}, tabSize:2, insertSpaces:true,
         wordWrap: mobile ? 'on' : 'off',
         padding: { top: 8, bottom: 8 },
       });
@@ -1933,9 +1871,7 @@ function initMonaco(){
         if(!f) return;
         const v = editorModel.getValue();
         if(f.content !== v){
-          f.content = v;
-          f.dirty = true;
-          f._lastLocalEdit = Date.now();
+          f.content = v; f.dirty = true; f._lastLocalEdit = Date.now();
           renderTabs(); updateStatus();
           clearTimeout(f._t);
           f._t = setTimeout(()=>saveFile(f.path), 900);
@@ -1949,7 +1885,6 @@ function initMonaco(){
     }, err=>{ res(); });
   });
 }
-
 function applyRemoteUpdate(path, content, fromUser, username){
   const f = S.files.find(x => x.path === path);
   if(!f) return;
@@ -1965,14 +1900,13 @@ function applyRemoteUpdate(path, content, fromUser, username){
       if(editor){ editor.setScrollTop(scrollTop); }
     }catch(e){ try { f._model.setValue(content); } catch(e2){} }
   }
-  f.content = content;
-  f.dirty = false;
+  f.content = content; f.dirty = false;
   renderTabs(); updateStatus();
   toast(username + ' updated ' + base(path), 'info');
 }
 
 /* ==================================================================
-   TERMINAL — multi-session (client side)
+   TERMINAL — multi-session, professional shortcuts, paste/copy
 ================================================================== */
 function emitTerm(event, data, sid){
   if(!mainClient || !mainClient.ws || mainClient.ws.readyState !== WebSocket.OPEN) return;
@@ -1981,10 +1915,14 @@ function emitTerm(event, data, sid){
   if(useSid) payload.session_id = useSid;
   mainClient.emit(event, payload);
 }
-function activeTerm(){
-  if(!S.activeTermSid) return null;
-  return S.terms.get(S.activeTermSid) || null;
+function activeTerm(){ if(!S.activeTermSid) return null; return S.terms.get(S.activeTermSid) || null; }
+
+function _applyFontSize(t){
+  const mobile = isMobile();
+  const base = mobile ? 13 : 14;
+  t.options.fontSize = savedFontSize || base;
 }
+
 function createTerminal(name, opts){
   opts = opts || {};
   const sid = opts.sid || ('t' + (++S.termCounter));
@@ -1995,28 +1933,89 @@ function createTerminal(name, opts){
 
   const mobile = isMobile();
   const t = new Terminal({
-    fontFamily: "'Ubuntu Mono', 'JetBrains Mono', monospace",
+    fontFamily: "'Ubuntu Mono', 'JetBrains Mono', 'Fira Code', monospace",
     fontSize: mobile ? 13 : 14,
-    lineHeight: 1.25,
+    lineHeight: 1.3,
+    letterSpacing: 0,
     cursorBlink: true,
     cursorStyle: 'block',
+    cursorWidth: 2,
     theme: {
-      background: '#2c001e', foreground: '#ffffff', cursor: '#ffffff',
-      cursorAccent: '#2c001e', selection: 'rgba(255,255,255,0.25)',
-      black: '#2c001e', red: '#cc0000', green: '#4e9a06', yellow: '#c4a000',
-      blue: '#3465a4', magenta: '#75507b', cyan: '#06989a', white: '#d3d7cf',
-      brightBlack: '#555753', brightRed: '#ef2929', brightGreen: '#8ae234',
-      brightYellow: '#fce94f', brightBlue: '#729fcf', brightMagenta: '#ad7fa8',
-      brightCyan: '#34e2e2', brightWhite: '#eeeeec',
+      background: '#1a0011',
+      foreground: '#f8f6f4',
+      cursor: '#ff7a45',
+      cursorAccent: '#1a0011',
+      selection: 'rgba(233,84,32,0.35)',
+      black: '#2c001e',
+      red: '#ff5c78',
+      green: '#6fcf97',
+      yellow: '#fbbf24',
+      blue: '#6c8cff',
+      magenta: '#c084fc',
+      cyan: '#38bdf8',
+      white: '#e4e6f0',
+      brightBlack: '#5f6884',
+      brightRed: '#ff7588',
+      brightGreen: '#a7f3a7',
+      brightYellow: '#fcd34d',
+      brightBlue: '#8aa4ff',
+      brightMagenta: '#d8b4fe',
+      brightCyan: '#67e8f9',
+      brightWhite: '#ffffff',
     },
-    scrollback: 5000,
+    scrollback: 10000,
     convertEol: false,
+    allowProposedApi: true,
+    rightClickSelectsWord: true,
   });
+  _applyFontSize(t);
+
   const fit = new FitAddon.FitAddon();
   t.loadAddon(fit);
+  try {
+    if(window.WebLinksAddon) {
+      const links = new WebLinksAddon.WebLinksAddon();
+      t.loadAddon(links);
+    }
+  } catch(e){}
   t.open(wrapper);
 
-  const info = { sid, term: t, fit, wrapper, name: name || ('bash ' + sid), ready: false };
+  // Custom key handler for copy/paste
+  t.attachCustomKeyEventHandler((event)=>{
+    if(event.type !== 'keydown') return true;
+
+    // Ctrl+Shift+C → copy selection
+    if(event.ctrlKey && event.shiftKey && event.code === 'KeyC'){
+      const sel = t.getSelection();
+      if(sel){
+        navigator.clipboard.writeText(sel).then(()=>toast('Copied','success')).catch(()=>{});
+      }
+      return false;
+    }
+    // Ctrl+Shift+V → paste
+    if(event.ctrlKey && event.shiftKey && event.code === 'KeyV'){
+      pasteToActiveTerm();
+      return false;
+    }
+    // Ctrl+V (regular) → paste (skip shell's own paste)
+    if(event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyV'){
+      pasteToActiveTerm();
+      return false;
+    }
+    // Shift+Insert → paste
+    if(event.shiftKey && event.code === 'Insert'){
+      pasteToActiveTerm();
+      return false;
+    }
+    // Ctrl+Shift+A → select all
+    if(event.ctrlKey && event.shiftKey && event.code === 'KeyA'){
+      t.selectAll();
+      return false;
+    }
+    return true;
+  });
+
+  const info = { sid, term: t, fit, wrapper, name: name || ('bash ' + sid), ready: false, busy: false };
   S.terms.set(sid, info);
 
   t.onData(data=>{ if(info.ready) emitTerm('term:input', { text: data }, sid); });
@@ -2057,7 +2056,8 @@ function switchTerminal(sid){
     if(!isTouch()) info.term.focus();
   }, 50);
   $('st-term').style.display = info.ready ? 'flex' : 'none';
-  updateTermTitle();
+  const nameEl = $('st-term-name');
+  if(nameEl) nameEl.textContent = info.name || 'terminal';
   renderTermTabs();
 }
 function closeTerminal(sid){
@@ -2088,23 +2088,132 @@ function renderTermTabs(){
   const c = $('term-tabs');
   if(!c) return;
   const sids = Array.from(S.terms.keys());
-  c.innerHTML = sids.map(sid => {
+  c.innerHTML = sids.map((sid, i) => {
     const t = S.terms.get(sid);
     const active = sid === S.activeTermSid ? 'active' : '';
-    return '<div class="term-tab ' + active + '" data-sid="' + sid + '">' +
-      '<i class="fas fa-terminal ti"></i>' +
-      '<span>' + (t.name || 'bash') + '</span>' +
+    const busy = t.busy ? 'busy' : '';
+    return '<div class="term-tab ' + active + '" data-sid="' + sid + '" title="' + (t.name || '') + '">' +
+      '<span class="tab-num">' + (i+1) + '</span>' +
+      '<span class="status-dot ' + busy + '"></span>' +
+      '<span class="tab-name">' + (t.name || 'bash') + '</span>' +
       '<span class="term-tab-close" data-sid="' + sid + '"><i class="fas fa-times"></i></span>' +
       '</div>';
   }).join('');
   c.querySelectorAll('.term-tab').forEach(el => {
-    el.onclick = (e) => { if(e.target.closest('.term-tab-close')) return; switchTerminal(el.dataset.sid); };
+    const sid = el.dataset.sid;
+    el.onclick = (e) => { if(e.target.closest('.term-tab-close')) return; switchTerminal(sid); };
+    el.ondblclick = (e) => {
+      if(e.target.closest('.term-tab-close')) return;
+      renameTerminal(sid);
+    };
+    el.onauxclick = (e) => {
+      if(e.button === 1){ e.preventDefault(); closeTerminal(sid); }
+    };
   });
   c.querySelectorAll('.term-tab-close').forEach(el => {
     el.onclick = (e) => { e.stopPropagation(); closeTerminal(el.dataset.sid); };
   });
 }
+async function renameTerminal(sid){
+  const info = S.terms.get(sid);
+  if(!info) return;
+  const nn = await modal('Rename terminal', 'Enter a name for this terminal:', info.name || 'bash');
+  if(!nn) return;
+  info.name = nn.substring(0, 40);
+  renderTermTabs();
+  if(sid === S.activeTermSid){
+    const nameEl = $('st-term-name'); if(nameEl) nameEl.textContent = info.name;
+  }
+}
 function initTerminalStack(){ createTerminal('bash'); }
+
+function cycleTerminal(delta){
+  const sids = Array.from(S.terms.keys());
+  if(sids.length < 2) return;
+  const idx = sids.indexOf(S.activeTermSid);
+  let next = idx + delta;
+  if(next < 0) next = sids.length - 1;
+  if(next >= sids.length) next = 0;
+  switchTerminal(sids[next]);
+}
+function jumpToTerminal(idx){
+  const sids = Array.from(S.terms.keys());
+  if(idx >= 0 && idx < sids.length) switchTerminal(sids[idx]);
+}
+function adjustFontSize(delta){
+  const a = activeTerm(); if(!a) return;
+  const cur = a.term.options.fontSize || 14;
+  const next = Math.max(8, Math.min(28, cur + delta));
+  a.term.options.fontSize = next;
+  savedFontSize = next;
+  try { localStorage.setItem('cf_fontsize', String(next)); } catch(e){}
+  try { a.fit.fit(); } catch(e){}
+  emitTerm('term:resize', { rows: a.term.rows, cols: a.term.cols }, a.sid);
+}
+function resetFontSize(){
+  const a = activeTerm(); if(!a) return;
+  savedFontSize = 0;
+  try { localStorage.removeItem('cf_fontsize'); } catch(e){}
+  _applyFontSize(a.term);
+  try { a.fit.fit(); } catch(e){}
+  emitTerm('term:resize', { rows: a.term.rows, cols: a.term.cols }, a.sid);
+}
+
+async function pasteToActiveTerm(){
+  const a = activeTerm();
+  if(!a || !a.ready){ toast('No active terminal','error'); return; }
+  try {
+    let text = '';
+    if(navigator.clipboard && navigator.clipboard.readText){
+      try {
+        text = await navigator.clipboard.readText();
+      } catch(e){
+        // Permission denied — try fallback
+        text = await _pasteFallback();
+      }
+    } else {
+      text = await _pasteFallback();
+    }
+    if(text){
+      emitTerm('term:input', { text }, a.sid);
+      suppressOverlayUntil = Date.now() + 600;
+      $('tap-to-type').classList.remove('show');
+      setTimeout(()=>{ try{ a.term.focus(); }catch(e){} }, 0);
+    }
+  } catch(e){
+    toast('Paste failed: ' + e.message, 'error');
+  }
+}
+function _pasteFallback(){
+  return new Promise(resolve => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      const ok = document.execCommand('paste');
+      const text = ta.value || '';
+      document.body.removeChild(ta);
+      resolve(text);
+    } catch(e){ resolve(''); }
+  });
+}
+async function copyFromActiveTerm(){
+  const a = activeTerm(); if(!a) return;
+  const sel = a.term.getSelection();
+  if(!sel){ toast('Nothing selected','info'); return; }
+  try { await navigator.clipboard.writeText(sel); toast('Copied','success'); }
+  catch(e){ toast('Copy failed','error'); }
+}
+function selectAllInActiveTerm(){
+  const a = activeTerm(); if(!a) return;
+  try { a.term.selectAll(); } catch(e){}
+  const sel = a.term.getSelection();
+  if(sel) navigator.clipboard.writeText(sel).catch(()=>{});
+  toast('Selected all','success');
+}
 
 function toggleTerminal(force){
   const pane = $('term-pane');
@@ -2132,23 +2241,23 @@ function toggleKeyBar(force){
   const open = force !== undefined ? force : !S.keyBarOpen;
   S.keyBarOpen = open;
   kb.classList.toggle('open', open);
-  setTimeout(()=>{ const a = activeTerm(); if(a){ try { a.fit.fit(); }catch(e){} } updateKeyBarArrows(); }, 150);
+  setTimeout(()=>{
+    const a = activeTerm(); if(a){ try { a.fit.fit(); }catch(e){} }
+    updateKeyBarArrows();
+  }, 150);
 }
 function shellQuote(s){ return "'" + String(s || "").replace(/'/g, "'\\''") + "'"; }
 async function runInTerminal(filePath){
   filePath = normalizePath(filePath);
   if(!filePath) return;
-  const dir = parent(filePath);
-  const name = base(filePath);
+  const dir = parent(filePath); const name = base(filePath);
   const node = S.map.get(filePath);
   if(!node || node.type !== "file"){ toast('Cannot run: file no longer exists','error'); return; }
   toggleTerminal(true);
   const cmd = dir
     ? 'cd ' + shellQuote(dir) + ' && python ' + shellQuote(name)
     : 'python ' + shellQuote(name);
-  if(!activeTerm() || !activeTerm().ready){
-    if(!S.terms.size) createTerminal('bash');
-  }
+  if(!activeTerm() || !activeTerm().ready){ if(!S.terms.size) createTerminal('bash'); }
   setTimeout(()=>{
     emitTerm('term:input', { text: cmd + '\n' });
     const a = activeTerm(); if(a && !isTouch()) a.term.focus();
@@ -2166,11 +2275,15 @@ async function changeUsername(){
 ================================================================== */
 function setupQuickKeys(){
   document.querySelectorAll('#key-bar .kk').forEach(k=>{
+    // Skip buttons with id (they have dedicated handlers)
+    if(k.id) return;
+
     let _startX = 0, _startY = 0, _moved = false, _active = false;
     const sendKey = () => {
       const a = activeTerm();
       if(!a || !a.ready) return;
       const raw = k.dataset.k;
+      if(!raw) return;
       const text = raw.replace(/\\u([0-9a-fA-F]{4})/g, function(_, h){ return String.fromCharCode(parseInt(h, 16)); });
       const finalText = text.replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\n/g, '\n');
       emitTerm('term:input', { text: finalText }, a.sid);
@@ -2178,6 +2291,7 @@ function setupQuickKeys(){
       $('tap-to-type').classList.remove('show');
       setTimeout(()=>{ try{ a.term.focus(); }catch(e){} }, 0);
     };
+
     k.addEventListener('pointerdown', (e)=>{
       if(e.pointerType === 'mouse' && e.button !== 0) return;
       _active = true; _moved = false;
@@ -2202,6 +2316,16 @@ function setupQuickKeys(){
     k.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); });
     k.addEventListener('contextmenu', (e)=>{ e.preventDefault(); e.stopPropagation(); });
   });
+
+  // Special buttons
+  const pasteBtn = $('kk-paste'); if(pasteBtn) pasteBtn.onclick = (e)=>{ e.preventDefault(); pasteToActiveTerm(); };
+  const copyBtn = $('kk-copy'); if(copyBtn) copyBtn.onclick = (e)=>{ e.preventDefault(); copyFromActiveTerm(); };
+  const selAll = $('kk-select-all'); if(selAll) selAll.onclick = (e)=>{ e.preventDefault(); selectAllInActiveTerm(); };
+  const clrBtn = $('kk-clear'); if(clrBtn) clrBtn.onclick = (e)=>{ e.preventDefault(); const a = activeTerm(); if(a){ try{ a.term.clear(); }catch(e2){} a.term.focus(); } };
+  const fdec = $('kk-font-dec'); if(fdec) fdec.onclick = (e)=>{ e.preventDefault(); adjustFontSize(-1); };
+  const fres = $('kk-font-reset'); if(fres) fres.onclick = (e)=>{ e.preventDefault(); resetFontSize(); };
+  const finc = $('kk-font-inc'); if(finc) finc.onclick = (e)=>{ e.preventDefault(); adjustFontSize(+1); };
+  const rstrt = $('kk-restart'); if(rstrt) rstrt.onclick = (e)=>{ e.preventDefault(); const a = activeTerm(); if(a) restartTerminal(a.sid); };
 }
 function setupKeyBarScroll(){
   const bar = $('key-bar'); const upBtn = $('kb-up'); const downBtn = $('kb-down');
@@ -2245,8 +2369,7 @@ function uploadFiles(){
       fd.append('target', target);
       try{ await fetch('/upload', { method:'POST', body:fd, headers: { 'X-User-Id': S.user_id } }); }catch(e){}
     }
-    unloading();
-    await loadTree();
+    unloading(); await loadTree();
     toast('Uploaded '+inp.files.length+' file(s)','success');
   };
 }
@@ -2272,6 +2395,13 @@ async function startWS(){
       const arr = new Uint8Array(bin.length);
       for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
       info.term.write(arr);
+      // Mark busy when output arrives
+      if(!info.busy){
+        info.busy = true;
+        renderTermTabs();
+        clearTimeout(info._busyT);
+        info._busyT = setTimeout(()=>{ info.busy = false; renderTermTabs(); }, 400);
+      }
     }catch(e){ console.error('term:output', e); }
   });
   mainClient.on('term:ready', (payload)=>{
@@ -2280,12 +2410,13 @@ async function startWS(){
     if(!info) return;
     info.ready = true;
     const shellName = (payload && payload.shell) ? payload.shell.split('/').pop() : 'bash';
-    info.name = shellName + ' ' + sid.replace(/^t/, '#');
+    info.name = info.name || (shellName + ' ' + sid.replace(/^t/, '#'));
+    renderTermTabs();
     if(sid === S.activeTermSid){
       $('st-term').style.display = 'flex';
+      const nameEl = $('st-term-name'); if(nameEl) nameEl.textContent = info.name;
       $('term-title').textContent = shellName + ' — ' + S.username;
     }
-    renderTermTabs();
     if(isTouch() && sid === S.activeTermSid && !termFocused) $('tap-to-type').classList.add('show');
     if(isTouch()){ $('key-bar-wrap').classList.add('open'); S.keyBarOpen = true; }
     setTimeout(()=>{
@@ -2318,8 +2449,7 @@ async function startWS(){
     if(payload.username){
       S.username = payload.username;
       localStorage.setItem('cf_username', payload.username);
-      updateTermTitle();
-      updatePrompt();
+      updateTermTitle(); updatePrompt();
     }
   });
   mainClient.on('file:updated', (payload)=>{
@@ -2347,6 +2477,54 @@ async function startWS(){
   }catch(e){ console.error('WS connect failed', e); }
 }
 
+/* ==================================================================
+   GLOBAL KEYBOARD SHORTCUTS
+================================================================== */
+document.addEventListener('keydown', (e)=>{
+  // Global toggles
+  if((e.ctrlKey||e.metaKey) && e.code === 'Backquote'){ e.preventDefault(); toggleTerminal(); return; }
+  if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.code === 'KeyS' && S.active){ e.preventDefault(); saveFile(S.active); return; }
+  if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.code === 'KeyD'){ e.preventDefault(); downloadCurrent(); return; }
+
+  const inTerm = S.termOpen && (document.activeElement && document.activeElement.closest && document.activeElement.closest('#term-pane'));
+
+  // Terminal-scoped shortcuts
+  if(S.termOpen || inTerm){
+    // New terminal
+    if((e.ctrlKey||e.metaKey) && e.shiftKey && e.code === 'KeyT'){
+      e.preventDefault(); createTerminal('bash ' + (S.termCounter + 1)); toggleTerminal(true); return;
+    }
+    // Close terminal
+    if((e.ctrlKey||e.metaKey) && e.shiftKey && e.code === 'KeyW' && S.activeTermSid){
+      e.preventDefault(); closeTerminal(S.activeTermSid); return;
+    }
+    // Cycle tabs
+    if(e.ctrlKey && e.code === 'Tab'){ e.preventDefault(); cycleTerminal(e.shiftKey ? -1 : 1); return; }
+    if(e.ctrlKey && e.code === 'PageDown'){ e.preventDefault(); cycleTerminal(1); return; }
+    if(e.ctrlKey && e.code === 'PageUp'){ e.preventDefault(); cycleTerminal(-1); return; }
+    // Ctrl+1..9
+    if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.code && e.code.startsWith('Digit')){
+      const n = parseInt(e.code.replace('Digit',''), 10);
+      if(n >= 1 && n <= 9 && S.terms.size >= n){
+        e.preventDefault(); jumpToTerminal(n - 1); return;
+      }
+    }
+    // Font size
+    if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.code === 'Equal' || e.code === 'NumpadAdd')){
+      e.preventDefault(); adjustFontSize(+1); return;
+    }
+    if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.code === 'Minus' || e.code === 'NumpadSubtract')){
+      e.preventDefault(); adjustFontSize(-1); return;
+    }
+    if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.code === 'Digit0'){
+      e.preventDefault(); resetFontSize(); return;
+    }
+  }
+});
+
+/* ==================================================================
+   INIT
+================================================================== */
 document.addEventListener('DOMContentLoaded', async ()=>{
   $('btn-open').onclick = ()=>{ if(isMobile()) openSidebar(); else loadTree(); };
   $('empty-open').onclick = ()=>toggleTerminal(true);
@@ -2364,24 +2542,16 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   $('term-close').onclick = ()=>toggleTerminal(false);
   $('term-new').onclick = ()=>{ createTerminal('bash ' + (S.termCounter + 1)); toggleTerminal(true); };
-  $('term-clear').onclick = ()=>{ const a = activeTerm(); if(a){ try{ a.term.clear(); }catch(e){} if(termFocused) a.term.focus(); } };
+  $('term-clear').onclick = ()=>{ const a = activeTerm(); if(a){ try{ a.term.clear(); }catch(e){} a.term.focus(); } };
   $('term-keys').onclick = ()=>toggleKeyBar();
   $('term-user').onclick = changeUsername;
   $('term-title-btn').onclick = changeUsername;
-
   $('term-restart').onclick = ()=>{
     let a = activeTerm();
     if(!a){ createTerminal('bash'); toggleTerminal(true); toast('New terminal created','info'); return; }
     restartTerminal(a.sid);
     toast('Restarting ' + a.name + ' …','info');
   };
-
-  document.addEventListener('keydown', e=>{
-    if((e.ctrlKey||e.metaKey) && e.key === '`'){ e.preventDefault(); toggleTerminal(); }
-    if((e.ctrlKey||e.metaKey) && e.key === 's'){ e.preventDefault(); saveFile(S.active); }
-    if((e.ctrlKey||e.metaKey) && e.key === 'd'){ e.preventDefault(); downloadCurrent(); }
-    if((e.ctrlKey||e.metaKey) && e.key === 't'){ e.preventDefault(); createTerminal('bash ' + (S.termCounter + 1)); toggleTerminal(true); }
-  });
 
   setupKeyBarScroll();
   setupQuickKeys();
@@ -2402,8 +2572,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
   const tt = $('tap-to-type');
   const focusTerm = ()=>{
-    const a = activeTerm();
-    if(!a) return;
+    const a = activeTerm(); if(!a) return;
     try{ a.term.focus(); }catch(e){}
     $('tap-to-type').classList.remove('show');
     setTimeout(()=>{ try{ a.fit.fit(); }catch(e){} }, 200);
@@ -2421,16 +2590,15 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 # ============================================================
 if __name__ == "__main__":
     print("=" * 60)
-    print("  CodeForge Pro — Multi-Terminal (Controlling-TTY Edition)")
+    print("  CodeForge Pro — Professional Terminal")
     print("=" * 60)
     print(f"  🌐  http://localhost:5000")
     print(f"  📂  Workspace: {WORKSPACE}")
     print(f"  🐍  Python: {PYTHON_PATH}")
     print(f"  📦  Venv: {VENV_ROOT or '(system)'}")
     print(f"  🐚  Shell: {DEFAULT_SHELL}")
-    print(f"  ⌨️   ^C now sends SIGINT to foreground job (pty.fork + setsid + CT)")
-    print(f"  🔄  Restart walks /proc to kill the whole session, not just bash")
-    print(f"  🖥️   Multiple terminals with tabs (Ctrl+T / + button)")
+    print(f"  ⌨️   Shortcuts: Ctrl+Shift+C/V copy/paste · Ctrl+Tab switch · Ctrl+T new")
+    print(f"  🖥️   Multi-tab terminals with status dots and index chips")
     print(f"  ⚡  Ctrl+C to stop")
     print("=" * 60)
     app.run()
