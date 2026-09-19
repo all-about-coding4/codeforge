@@ -4,7 +4,7 @@ Multi-User Terminal + Files IDE
 
 CodeForge is a self-hosted, browser-based development environment that brings a real terminal, file manager, Monaco editor, and real-time collaboration together in one workspace.
 
-Built with Python + Lynkio, CodeForge Pro is designed to feel like a lightweight desktop IDE while remaining accessible from any modern browser — including mobile devices.
+Built with Python + Lynkio, CodeForge is designed to feel like a lightweight desktop IDE while remaining accessible from any modern browser — including mobile devices.
 ```
 
 # ✨ Features
