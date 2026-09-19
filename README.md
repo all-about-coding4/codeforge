@@ -62,7 +62,7 @@ Windows: CodeForge Pro can run using a subprocess-based terminal, but Unix syste
 
 ## 🎥 CodeForge Pro Demo
 
-<video src="./assets/codeforge-demo.mp4" controls width="100%">
+<video src="./demo-video/vtest.mp4" controls width="100%">
   Your browser does not support the video tag.
 </video>
 
