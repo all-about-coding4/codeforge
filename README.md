@@ -1,8 +1,8 @@
-# ⚡ CodeForge Pro
+# ⚡ CodeForge
 ```text
 Multi-User Terminal + Files IDE
 
-CodeForge Pro is a self-hosted, browser-based development environment that brings a real terminal, file manager, Monaco editor, and real-time collaboration together in one workspace.
+CodeForge is a self-hosted, browser-based development environment that brings a real terminal, file manager, Monaco editor, and real-time collaboration together in one workspace.
 
 Built with Python + Lynkio, CodeForge Pro is designed to feel like a lightweight desktop IDE while remaining accessible from any modern browser — including mobile devices.
 ```
@@ -24,10 +24,10 @@ Feature	Description
 
 # 🖼️ What You Get
 ```text
-CodeForge Pro combines the essential parts of a development environment into a single browser interface:
+CodeForge combines the essential parts of a development environment into a single browser interface:
 
 ┌─────────────────────────────────────────────────────────────┐
-│  CodeForge Pro                              👤 alex         │
+│  CodeForge                              👤 alex         │
 ├───────────────┬─────────────────────────────────────────────┤
 │               │                                             │
 │ 📁 workspace  │              Monaco Editor                  │
@@ -84,7 +84,7 @@ Then install Lynkio inside the environment:
 pip install lynkio
 ```
 
-# ▶️ Running CodeForge Pro
+# ▶️ Running CodeForge
 ```text
 Start the server:
 
