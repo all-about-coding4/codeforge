@@ -59,7 +59,7 @@ You should see something like:
 Open http://localhost:5000 in your browser.
 The server listens on 0.0.0.0:5000, so it is reachable from other machines on the network (useful for multi-user sessions).
 
-How to Use
+## How to Use
 File Explorer (left sidebar)
 	•	Click folders to navigate (breadcrumb updates).
 	•	Click a file to open it in the editor.
@@ -68,27 +68,27 @@ File Explorer (left sidebar)
 	◦	Run in Terminal (runs python )
 	◦	Download / Rename / Delete
 	•	Toolbar buttons: New file, Upload, Download current folder/file.
-Editor
+# Editor
 	•	Monaco editor with syntax highlighting for common languages.
 	•	Auto-saves ~900 ms after you stop typing.
 	•	Live collaboration: other users’ avatars appear on the tab and in the status bar.
 	•	Ctrl/Cmd + S forces a save.
-Terminal
+# Terminal
 	•	Click the Term button (or `Ctrl + ``) to open/close the terminal pane.
 	•	+ or Ctrl + T → new terminal tab.
 	•	Restart button cleanly kills the whole session and starts a fresh shell.
 	•	The prompt shows your username and the current folder (synced with the explorer).
 	•	On mobile/touch devices a large key bar appears with arrows, Tab, Esc, Enter, ^C, ^D, ^L, etc.
-User identity
+# User identity
 	•	Click the user icon (or the terminal title) to set a username.
 	•	Username is stored and appears in the shell prompt and in collaboration indicators.
-Download
+# Download
 	•	Download button or the breadcrumb “Download …” link downloads the current file or the whole workspace as a zip.
 
-Workspace
+# Workspace
 All files live under a workspace/ directory next to the script. Hidden files (names starting with .) are ignored by the tree. A .users.json file inside the workspace stores user names.
 
-Keyboard Shortcuts
+# Keyboard Shortcuts
 Shortcut
 Action
 `Ctrl/Cmd + ``
@@ -100,7 +100,7 @@ Save current file
 Ctrl/Cmd + D
 Download current item
 
-Technical Notes
+# Technical Notes
 	•	Unix: real PTY via pty.fork() → proper signal delivery.
 	•	Windows: uses asyncio.create_subprocess_shell (no full PTY semantics).
 	•	Max upload size: 500 MB.
@@ -110,7 +110,11 @@ Technical Notes
 	◦	Font Awesome
 	◦	LynkIO client (/lynkio/client.js)
 
-Stopping the Server
+# Stopping the Server
 Press Ctrl+C in the terminal where the server is running.
 
 Enjoy coding with CodeForge Pro!
+
+and please give us a star if you find it helpful
+
+# BY ALEX AUSTIN
